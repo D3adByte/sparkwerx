@@ -21,8 +21,12 @@ Sunshine's changing-frame encoder tests and a MacBook/Moonlight connection
 subsequently passed too. A later normal reboot returned to factory KMS off,
 as the one-boot trial was designed to do. Persistent KMS is selected for
 the pilot. Two activation attempts stopped on factory menu settings and
-recovered. The corrected operator below still needs its successful host retry
-and boot.
+recovered. The corrected activation and a normal reboot
+[passed on the pilot](../root/graphics/validation/2026-09-22-persistent-kms-host.md),
+with `PERSISTENT_KMS_ACTIVE` and loaded `modeset=Y`. The physical KMS-off
+fallback boot remains untested. Inspect the active configuration with
+`./scripts/dgx-kms-persistent status`; do not repeat initial enable or re-arm
+the spent one-boot trial just to resume streaming tests.
 
 ## Persistent KMS: optional boot configuration
 

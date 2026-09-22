@@ -102,6 +102,12 @@ The next live run produced roughly 110–120 canvas submissions/sec, but its
 Sunshine log was lost during a manual stop. Trial stdout now goes directly to
 root-private evidence; native logging handles readiness in the private runtime.
 The logging correction still needs its exact pre-launch gate and a live check.
+After the persistent KMS reboot, NVIDIA enumerated as `card0` rather than the
+offline diagnostic's original `card1`. The Moonlight trial has a separate
+[identity-based selector](remote-desktop/validation/2026-09-22-moonlight-drm-enumeration.md).
+Keep its same-GPU pairing, saved-context checks, exact private-device allowlist,
+and child-only groups; never create/chmod a host node to satisfy an old number.
+The passed offline capture/encoder artifacts remain unchanged.
 Read the trial guide before use. Preserve the
 passed offline diagnostics unchanged. This authorization does not extend to
 persistent services, a desktop-mode switch, reboot, audio, or host input ACLs.
@@ -151,7 +157,11 @@ to 30 seconds, without relaxing the menu verifier. Its exact recovered bundle
 has a separate `before-recordfail-fix` archive/root and
 [regression record](root/graphics/validation/2026-09-22-persistent-kms-recordfail.md).
 Both old snapshots/code roots survive retry; never delete or rebind them manually.
-Successful activation and physical fallback/ordinary boots are still unverified.
+The corrected activation and an ordinary reboot
+[passed on the pilot](root/graphics/validation/2026-09-22-persistent-kms-host.md):
+the operator reported `PERSISTENT_KMS_ACTIVE` with loaded `modeset=Y`.
+The physical KMS-off fallback boot remains untested. Use
+`dgx-kms-persistent status` now; do not replay enable or the spent one-boot trial.
 Initial deployment stays headless;
 explicit GNOME/Xorg policy must precede any later GDM transition.
 Preserve factory GNOME/Xorg as the alternate to local/remote Hyprland. A

@@ -40,6 +40,7 @@ def module(name, filename):
 
 
 capture = module("moonlight_capture_helpers", "session-test.py")
+drm = module("moonlight_drm_devices", "trial-devices.py")
 
 
 def command(*args, data=None, timeout=15):
@@ -254,6 +255,7 @@ def tailscale_address():
 def health_snapshot():
     # Like the passed capture snapshot, but permit only our own transient units
     # to be finishing a failed run. Never relax a protected service's record.
+    selection = drm.configure(capture)
     failed = json.loads(
         command("/usr/bin/systemctl", "list-units", "--failed", "--output=json", "--no-pager")
     )
@@ -261,6 +263,7 @@ def health_snapshot():
         raise RuntimeError("an unrelated systemd unit is failed")
     address, identity = tailscale_address()
     value = {
+        "drm": selection,
         "units_profile": capture.gpu.host_snapshot(),
         "devices": capture.device_snapshot(),
         "boot": Path("/proc/sys/kernel/random/boot_id").read_text(),
@@ -284,13 +287,14 @@ def health_snapshot():
 
 class Host:
     def preflight(self):
-        capture.preflight(sunshine=True)
+        drm.preflight(capture)
         return health_snapshot()
 
     def snapshot(self):
         return health_snapshot()
 
     def worker_properties(self, context):
+        drm.configure(capture, expected=context["drm"])
         properties = capture.unit_properties(STATE / "result", sunshine=True)
         properties.update(
             {
@@ -431,6 +435,9 @@ def start(preset):
         "started": time.monotonic(),
         "address": before["tailscale_address"],
         "driver": before["gpu"].rsplit(", ", 1)[1],
+        # The no-GPU container fixture has no DRM selection. Only its separate
+        # FixtureHost consumes that context; the real worker requires an exact pair.
+        "drm": before.get("drm"),
     }
     save_json(snapshot / "before.json", before)
     save_json(snapshot / "context.json", context)

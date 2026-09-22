@@ -49,6 +49,13 @@ use `./scripts/dgx-moonlight-trial inspect` for a redacted summary of the latest
 trial. Do not paste raw logs or pairing credentials into an issue or chat.
 `./scripts/dgx-moonlight-trial test` runs only the container gate and host checks.
 
+The launcher discovers the NVIDIA GB10's current DRM card/render pair from
+kernel device identity; `card0` and `card1` are not stable GPU names across boots.
+It prints the chosen paths before testing, then rechecks that same pair in the
+private session. Missing, mismatched, or multiple NVIDIA devices stop launch.
+Do not create device aliases, change permissions, or switch desktops to fix a
+missing card number. See the [renumbering fix](../remote-desktop/validation/2026-09-22-moonlight-drm-enumeration.md).
+
 ## Open Sunshine administration through SSH
 
 In a **new Terminal window on the Mac**, run:
@@ -185,6 +192,12 @@ replaces Docker/Tailscale rules. It does not change tailnet grants.
 
 The [private GPU worker](../remote-desktop/trial-session.py) reuses the passed
 driver bridge, existing device nodes, and child-only card/render groups.
+The trial-only [device selector](../remote-desktop/trial-devices.py) verifies
+the PCI driver/vendor/device, a same-device render node, root ownership, and
+matching kernel device numbers. The saved trial context binds the guardian,
+worker, and unprivileged child to that selection. Device mounts, cgroup access,
+child groups, and `AQ_DRM_DEVICES` all use it; the private `/dev/dri` must contain
+only that pair. The original offline diagnostic source and outputs stay unchanged.
 Physical input, `/dev/uinput`, host homes, and host D-Bus remain hidden; the
 graphics processes run as the normal user with zero effective capabilities.
 It does not update a root/Home profile, switch normal desktop mode, alter KMS

@@ -27,14 +27,17 @@ def module(name, filename):
 
 capture = module("trial_session_helpers", "session-test.py")
 startup = module("trial_sunshine_helpers", "sunshine-startup.py")
+drm = module("trial_session_drm_devices", "trial-devices.py")
 
 
-def isolated():
+def isolated(selection):
     # Unlike the unchanged offline diagnostic, this service permits IP sockets.
     # The root guardian first installs the Tailscale-only ingress guard. Keep
     # all physical input, host D-Bus, homes, and unnecessary devices hidden.
     if not re.search(rf"/{re.escape(WORKER)}(?:/|$)", Path("/proc/self/cgroup").read_text()):
         raise RuntimeError("trial session is outside its private service")
+    drm.configure(capture, expected=selection)
+    drm.verify_private(capture)
     for path in (*capture.FORBIDDEN_DEVICES, "/run/systemd/private", "/run/dbus/system_bus_socket"):
         if os.path.lexists(path):
             raise RuntimeError("trial exposes an unexpected host device or IPC socket")
@@ -95,9 +98,17 @@ def small_json(path, uid):
         return json.load(stream)
 
 
+def session_environment(directory, driver, tools):
+    env = capture.session_environment(directory, driver, tools)
+    # The unchanged offline bridge targets its original enumeration. Override
+    # only this trial's renderer selection with the checked current node.
+    env["AQ_DRM_DEVICES"] = str(capture.DRM_CARD)
+    return env
+
+
 def worker(tools, bundle):
-    isolated()
     context = small_json(RESULT / "context.json", 0)
+    isolated(context["drm"])
     account = pwd.getpwnam("n0b0dy")
     if account.pw_uid != 1000 or account.pw_gid != 1000:
         raise ValueError("trial requires the reviewed pilot user mapping")
@@ -160,11 +171,11 @@ def worker(tools, bundle):
 
 
 def inner(tools):
-    isolated()
     context = json.loads(sys.stdin.read(4097))
+    isolated(context["drm"])
     directory = capture.RUNTIME / "user"
     capture.validate_ipc_path(directory / "r")
-    env = capture.session_environment(directory, context["driver"], tools)
+    env = session_environment(directory, context["driver"], tools)
     for name in ("r", "config", "cache", "data", "state"):
         (directory / name).mkdir(mode=0o700)
     preset = capture.PRESETS[context["preset"]]

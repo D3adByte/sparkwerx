@@ -11,6 +11,7 @@ let
     ./trial-control.py
     ./trial-session.py
     ./trial-metrics.py
+    ./trial-devices.py
     ./session-test.py
     ./gpu-probe.py
     ./virtual-display.py
@@ -130,6 +131,7 @@ in
           ]
         )}
         cp ${../dev/test_moonlight_trial.py} tree/dev/test_moonlight_trial.py
+        cp ${../dev/test_moonlight_devices.py} tree/dev/test_moonlight_devices.py
         SPARKWERX_TEST_NFT=${pkgs.nftables}/bin/nft \
           SPARKWERX_TEST_SUNSHINE=${tools.sunshine} \
           python3 -B -m unittest discover -s tree/dev

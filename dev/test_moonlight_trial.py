@@ -51,6 +51,7 @@ class TrialBytecodeTests(unittest.TestCase):
                 "trial-control.py",
                 "trial-session.py",
                 "trial-metrics.py",
+                "trial-devices.py",
                 "session-test.py",
                 "gpu-probe.py",
                 "virtual-display.py",
@@ -399,7 +400,8 @@ class TrialPolicyTests(unittest.TestCase):
 
     def test_offline_isolation_is_unchanged(self):
         offline = control.capture.unit_properties(Path("/private/result"), sunshine=True)
-        trial, devices = control.HOST.worker_properties(CONTEXT)
+        with mock.patch.object(control.drm, "configure"):
+            trial, devices = control.HOST.worker_properties(CONTEXT | {"drm": {}})
         self.assertEqual(offline["PrivateNetwork"], "yes")
         self.assertEqual(offline["RuntimeMaxSec"], "150s")
         self.assertEqual(trial["RuntimeMaxSec"], "1790s")
@@ -523,7 +525,7 @@ class TrialPolicyTests(unittest.TestCase):
     def test_session_rejects_a_worker_outside_its_service(self):
         with mock.patch.object(Path, "read_text", return_value="0::/user.slice"):
             with self.assertRaises(RuntimeError):
-                session.isolated()
+                session.isolated({})
 
     def test_canvas_has_no_shell_or_typed_text_log(self):
         canvas = (ROOT / "remote-desktop/trial-canvas.c").read_text()

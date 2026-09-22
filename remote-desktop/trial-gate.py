@@ -31,6 +31,10 @@ def main():
         raise ValueError("trial already has state; use status or stop")
     before = control.HOST.preflight()
     print(
+        f"INFO|gpu_devices|card={before['drm']['card']};render={before['drm']['render']}",
+        flush=True,
+    )
+    print(
         "INFO|disposable_trial_test|firewall probes, startup failure, crash cleanup, and timeout run only in a container",
         flush=True,
     )

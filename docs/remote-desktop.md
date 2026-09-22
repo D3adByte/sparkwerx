@@ -183,9 +183,11 @@ to get past the test. Enabling KMS needs a separately reviewed, reversible
 host configuration and boot plan while preserving the existing NVIDIA driver.
 The [first optional KMS trial boot passed](../root/graphics/validation/2026-09-06-kms-test-boot.md),
 and offscreen rendering/encoding plus temporary Hyprland capture passed with
-KMS enabled. Factory GNOME/Xorg remains the alternate to local and
-remote Hyprland. Use `./scripts/dgx-kms status` for the running trial; `check`
-is the pre-arm inspection, not its postboot verifier. Neither command reboots.
+KMS enabled. The pilot subsequently
+[enabled persistent KMS and rebooted successfully](../root/graphics/validation/2026-09-22-persistent-kms-host.md).
+Use `./scripts/dgx-kms-persistent status` for that active configuration, not
+the spent one-boot trial's unchanged-GRUB verifier. Factory GNOME/Xorg remains
+the alternate to local and remote Hyprland. A status command never reboots.
 
 This is a hardware diagnostic, not a remote-desktop installation. It needs
 explicit permission to start temporary graphics and a sudo password, but no
@@ -199,6 +201,9 @@ The default is a 3840×2160 virtual output configured at 120 Hz. Pass `1440p120`
 or `4k60` to test a smaller mode. The script currently accepts only the reviewed
 `sparkle-01` headless generation five and its NVIDIA DRM card/render-node pair;
 it is not a general fleet launcher.
+The original offline artifacts retain that reviewed device enumeration. The
+separate Moonlight trial now [discovers the current NVIDIA pair](../remote-desktop/validation/2026-09-22-moonlight-drm-enumeration.md)
+after a reboot renumbered the card; it does not rewrite the passed offline tests.
 
 It builds an immutable test bundle, snapshots protected host state, then starts
 a uniquely named transient systemd service with a **150-second hard limit**.
@@ -360,7 +365,7 @@ package is unchanged.
 The helper requests four seconds per codec at the selected preset, with a
 60-second process deadline. The same transient service still has its 150-second
 hard limit, no IP sockets or input devices, temporary card/render groups, and
-protected-host postflight. The existing KMS test boot is a prerequisite; this
+protected-host postflight. Loaded KMS is a prerequisite; this
 command does not change KMS, boot settings, or desktop mode.
 
 Success requires the selected Wayland display, NVENC-only initialization,

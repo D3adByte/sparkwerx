@@ -165,8 +165,8 @@ defaults to disabled. `kms-persistent` and its enabled/disabled policy checks
 use existing root-lane Python/coreutils/GRUB dependencies, with no new driver,
 CUDA package, unfree exception, user-profile package, or service.
 
-Deployment would own two additive GRUB symlinks, regenerate `grub.cfg`, retain
-one exact Nix code root, and keep private mode-0700 recovery snapshots under
+The pilot deployment owns two additive GRUB symlinks, regenerated `grub.cfg`,
+retains one exact Nix code root, and keeps private mode-0700 recovery snapshots under
 `/var/lib/dgx-setup/kms-persistent`. Ubuntu's current kernel generator supplies
 the KMS-off fallback. No initramfs, module override, EFI loader, GRUB environment,
 System Manager generation, or running service is changed. The spent one-boot
@@ -178,8 +178,9 @@ Its retry accepts only the two exact recovered initial attempts. It archives
 them separately under `kms-persistent-before-menu-fix` and
 `kms-persistent-before-recordfail-fix`, retaining their executables under the
 matching `dgx-setup-` prefixed GC roots without modifying earlier history. These
-are recovery records, not new packages, profiles, or services. Successful activation,
-the physical fallback boot, and reboot remain pending. See the
+are recovery records, not new packages, profiles, or services. The corrected
+activation and [normal reboot passed](../root/graphics/validation/2026-09-22-persistent-kms-host.md)
+with loaded KMS enabled. The physical fallback boot remains untested. See the
 [operator and rollback](nvidia-kms.md#persistent-kms-optional-boot-configuration).
 
 ## Status of this snapshot

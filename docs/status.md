@@ -15,7 +15,7 @@ For your machine's status, use the [status commands](operations.md#status-checks
 | Root configuration | System Manager generation five, selected/live/boot-linked |
 | Desktop | Confirmed headless; factory GDM and Dashboard GUI stopped, not uninstalled |
 | Access | Nix-owned Tailscale 1.102.3 with existing identity and Tailscale SSH preserved |
-| NVIDIA KMS | Factory off; persistent activation recovered after a [separate failed-boot timeout remained zero](../root/graphics/validation/2026-09-22-persistent-kms-recordfail.md). Corrected retry prepared; successful activation/reboot pending |
+| NVIDIA KMS | [Persistent KMS active after a normal reboot](../root/graphics/validation/2026-09-22-persistent-kms-host.md); factory KMS-off fallback retained, physical fallback boot still untested |
 | Recovery | No transition timer armed in the latest retained-state record; all five pilot generations and their roots retained |
 
 The recorded root classification is
@@ -46,7 +46,7 @@ remains to be tested on hardware.
 | --- | --- |
 | General fleet customization | Broader users, package sets, and later root-generation updates |
 | Desktop toggling | A retained-headless → GNOME operator and a full repeatable round trip |
-| Remote desktop | [A MacBook trial delivered 4K HEVC video and keyboard/mouse input](../remote-desktop/validation/2026-09-07-moonlight-client.md). The first overlay measured 32.44 FPS, not 120. Performance tuning, audio, and persistent deployment remain; KMS is not permanently enabled. See [remote desktop](remote-desktop.md) |
+| Remote desktop | [A MacBook trial delivered 4K HEVC video and keyboard/mouse input](../remote-desktop/validation/2026-09-07-moonlight-client.md). The first overlay measured 32.44 FPS, not 120. KMS now persists; the [postboot device-selection fix](../remote-desktop/validation/2026-09-22-moonlight-drm-enumeration.md) needs its gated live retry. Performance tuning, audio, and persistent deployment remain. See [remote desktop](remote-desktop.md) |
 | Ghostty | Real graphical runtime validation and activation |
 | Hyprland | Temporary NVIDIA DRM/GBM/EGL session passed; persistent local/remote session, GDM integration, and separate portal rollout remain |
 | KDE | Package selection, host integration, and validation |
