@@ -130,6 +130,7 @@
         trial = moonlightTrial;
         lifecycle = moonlightTrialLifecycle;
       };
+      moonlightTrialReport = import ./remote-desktop/trial-report.nix { pkgs = rootPkgs; };
       sunshinePolicy = import ./packages/sunshine/policy.nix {
         pkgs = rootPkgs;
         sunshine = sunshinePackage;
@@ -3671,6 +3672,7 @@
         moonlight-trial-policy = moonlightTrial.policy;
         moonlight-trial-network-test = moonlightTrial.networkTest;
         moonlight-trial-gate = moonlightTrialGate;
+        moonlight-trial-report = moonlightTrialReport.package;
         sunshine-policy = sunshinePolicy;
         remote-desktop-policy = remoteDesktopArtifacts.policy;
         remote-desktop-network-test = remoteDesktopArtifacts.networkTest;
@@ -3707,6 +3709,7 @@
         remote-desktop-session-policy = remoteDesktopArtifacts.sessionPolicy;
         moonlight-trial-policy = moonlightTrial.policy;
         moonlight-trial-lifecycle-container = moonlightTrialLifecycle;
+        moonlight-trial-report-policy = moonlightTrialReport.policy;
         chromium-package = chromiumPackage;
         chromium-policy = chromiumPolicyCheck;
         codex-cli-package = codexPackage;

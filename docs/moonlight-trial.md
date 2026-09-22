@@ -137,6 +137,31 @@ runs from the capture timestamp to packet preparation, including intermediate
 processing/queues, not just the NVENC call. Host send-path timing is separate
 from Moonlight's network round-trip latency.
 
+### Lag or a frozen reconnect
+
+Read the saved trial without starting another session:
+
+```bash
+./scripts/dgx-moonlight-trial diagnose
+```
+
+Append a snapshot name from `inspect` to select an earlier run. The report shows
+connection/capture/shutdown events in log order, host processing timings, and
+distinct errors with occurrence counts and first/last times. Repeated startup
+warnings cannot crowd errors out of the report. Any omitted records are counted.
+Canvas min/median/max includes every valid window, not only the early/late samples.
+
+Sudo is needed to read the private evidence. This command never starts or stops
+a session, touches the firewall, or changes an installed profile. It uses a
+separate, small Nix report package so updated parsing also works with old trial
+logs without changing the tested streaming bundle. It withholds authentication
+lines and redacts addresses and private paths; do not share raw logs.
+
+The [September reconnect investigation](../remote-desktop/validation/2026-09-23-moonlight-reconnect.md)
+recorded about 46 ms of host processing and a user-observed frozen reconnect.
+That is not an NVENC-only measurement. A generic supervisor exit near the
+30-minute limit does not establish when or why streaming failed.
+
 ## Stop and cleanup
 
 On the Spark:

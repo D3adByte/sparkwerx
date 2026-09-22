@@ -113,6 +113,10 @@ these outputs starts no session or listener.
 The trial canvas's frame-timing counters and numeric log inspector reuse those
 same dependencies. They add no package pin, profile package, or service and
 preserve the existing trial isolation and deadline.
+The separate `moonlight-trial-report` output adds read-only saved-log diagnostics
+using the existing Python runtime and standard library. It is not a profile
+package and imports no trial controller. Building or running the report starts
+no graphics, listeners, or services and changes no existing trial artifact.
 
 The original capture-tool build fetched about 357 KiB / 1.9 MiB unpacked for
 its extra tool outputs. Inspecting Grim's pinned source added 17.2 KiB / 79.1 KiB unpacked.

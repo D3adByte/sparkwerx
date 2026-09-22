@@ -8,9 +8,21 @@ if [[ "$EUID" -eq 0 ]]; then
   exit 1
 fi
 action="${1:-status}"
+# The report reads saved evidence with current parsing, independent of any
+# running/retained trial bundle. It never imports its controller or touches it.
+if [[ "$action" == diagnose ]]; then
+  if [[ "$#" -gt 2 || ("$#" -eq 2 && ! "$2" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$) ]]; then
+    printf '%s\n' 'Usage: ./scripts/dgx-moonlight-trial diagnose [SNAPSHOT_NAME]' >&2
+    exit 1
+  fi
+  nix --extra-experimental-features 'nix-command flakes' build --no-link --no-write-lock-file .#moonlight-trial-report
+  trial_report="$(nix --extra-experimental-features 'nix-command flakes' eval --raw --no-write-lock-file .#moonlight-trial-report.outPath)"
+  shift
+  exec sudo -- "$trial_report/bin/sparkwerx-moonlight-report" "$@"
+fi
 preset="${2:-4k60}"
 if [[ "$#" -gt 2 || ! "$action" =~ ^(test|start|status|stop|inspect)$ || ! "$preset" =~ ^(4k60|1440p120|4k120)$ ]]; then
-  printf '%s\n' 'Usage: ./scripts/dgx-moonlight-trial {test|start [4k60|1440p120|4k120]|status|stop|inspect}' >&2
+  printf '%s\n' 'Usage: ./scripts/dgx-moonlight-trial {test|start [4k60|1440p120|4k120]|status|stop|inspect|diagnose [SNAPSHOT_NAME]}' >&2
   exit 1
 fi
 if [[ "$action" != start && "$#" -gt 1 ]]; then

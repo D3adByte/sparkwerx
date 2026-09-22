@@ -46,7 +46,7 @@ remains to be tested on hardware.
 | --- | --- |
 | General fleet customization | Broader users, package sets, and later root-generation updates |
 | Desktop toggling | A retained-headless → GNOME operator and a full repeatable round trip |
-| Remote desktop | [A MacBook trial delivered 4K HEVC video and keyboard/mouse input](../remote-desktop/validation/2026-09-07-moonlight-client.md). The first overlay measured 32.44 FPS, not 120. KMS now persists; the [postboot device-selection fix](../remote-desktop/validation/2026-09-22-moonlight-drm-enumeration.md) needs its gated live retry. Performance tuning, audio, and persistent deployment remain. See [remote desktop](remote-desktop.md) |
+| Remote desktop | [A MacBook trial delivered 4K HEVC video and keyboard/mouse input](../remote-desktop/validation/2026-09-07-moonlight-client.md). KMS persists and the corrected GPU selector passed its gated live launch. [The latest trial had mouse lag and a frozen reconnect](../remote-desktop/validation/2026-09-23-moonlight-reconnect.md); the cause remains under investigation. The first overlay measured 32.44 FPS, not 120. Performance tuning, audio, and persistent deployment remain |
 | Ghostty | Real graphical runtime validation and activation |
 | Hyprland | Temporary NVIDIA DRM/GBM/EGL session passed; persistent local/remote session, GDM integration, and separate portal rollout remain |
 | KDE | Package selection, host integration, and validation |

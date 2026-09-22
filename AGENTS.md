@@ -101,13 +101,22 @@ pipeline statistics. These counters are not GPU presentation or client FPS.
 The next live run produced roughly 110–120 canvas submissions/sec, but its
 Sunshine log was lost during a manual stop. Trial stdout now goes directly to
 root-private evidence; native logging handles readiness in the private runtime.
-The logging correction still needs its exact pre-launch gate and a live check.
+The September 22 run passed its pre-launch gate and retained Sunshine records
+through cleanup, including three client connections/disconnections. It still
+had mouse lag and a frozen reconnect; do not call the streaming path fixed.
 After the persistent KMS reboot, NVIDIA enumerated as `card0` rather than the
 offline diagnostic's original `card1`. The Moonlight trial has a separate
 [identity-based selector](remote-desktop/validation/2026-09-22-moonlight-drm-enumeration.md).
 Keep its same-GPU pairing, saved-context checks, exact private-device allowlist,
 and child-only groups; never create/chmod a host node to satisfy an old number.
 The passed offline capture/encoder artifacts remain unchanged.
+Use `scripts/dgx-moonlight-trial diagnose [SNAPSHOT_NAME]` to read a saved run's
+redacted connection timeline and deduplicated errors. Its separate Python
+package does not import the trial controller or change the retained launcher;
+no new graphics run is needed. Read the
+[reconnect investigation](remote-desktop/validation/2026-09-23-moonlight-reconnect.md).
+Do not infer an early crash from the supervisor's generic deadline-exit messages
+or grant capabilities/device permissions merely because a warning mentions them.
 Read the trial guide before use. Preserve the
 passed offline diagnostics unchanged. This authorization does not extend to
 persistent services, a desktop-mode switch, reboot, audio, or host input ACLs.
