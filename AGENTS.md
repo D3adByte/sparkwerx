@@ -145,8 +145,14 @@ The corrected `zz-` drop-in and exact recovered-attempt retry have separate
 [regression evidence](root/graphics/validation/2026-09-07-persistent-kms-menu-order.md).
 Use the same `enable --console-ready` operator for a reviewed retry; it verifies
 recovery and preserves the old snapshot/code before selecting the correction.
-Never delete or rebind those roots manually. Successful activation and physical
-fallback/ordinary boots are still unverified. Initial deployment stays headless;
+The next attempt recovered after the factory's separate
+`GRUB_RECORDFAIL_TIMEOUT=0` failed validation. The adapter now sets that branch
+to 30 seconds, without relaxing the menu verifier. Its exact recovered bundle
+has a separate `before-recordfail-fix` archive/root and
+[regression record](root/graphics/validation/2026-09-22-persistent-kms-recordfail.md).
+Both old snapshots/code roots survive retry; never delete or rebind them manually.
+Successful activation and physical fallback/ordinary boots are still unverified.
+Initial deployment stays headless;
 explicit GNOME/Xorg policy must precede any later GDM transition.
 Preserve factory GNOME/Xorg as the alternate to local/remote Hyprland. A
 recognized GRUB header is not proof of boot-time environment write capability.

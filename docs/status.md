@@ -15,7 +15,7 @@ For your machine's status, use the [status commands](operations.md#status-checks
 | Root configuration | System Manager generation five, selected/live/boot-linked |
 | Desktop | Confirmed headless; factory GDM and Dashboard GUI stopped, not uninstalled |
 | Access | Nix-owned Tailscale 1.102.3 with existing identity and Tailscale SSH preserved |
-| NVIDIA KMS | Back to factory off after the one-boot experiment; first persistent activation stopped on [menu-setting load order](../root/graphics/validation/2026-09-07-persistent-kms-menu-order.md). Correction tested; successful activation/reboot pending |
+| NVIDIA KMS | Factory off; persistent activation recovered after a [separate failed-boot timeout remained zero](../root/graphics/validation/2026-09-22-persistent-kms-recordfail.md). Corrected retry prepared; successful activation/reboot pending |
 | Recovery | No transition timer armed in the latest retained-state record; all five pilot generations and their roots retained |
 
 The recorded root classification is

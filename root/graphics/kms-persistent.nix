@@ -25,6 +25,9 @@ let
     GRUB_CMDLINE_LINUX_DEFAULT="''${GRUB_CMDLINE_LINUX_DEFAULT} nvidia_drm.modeset=1"
     GRUB_TIMEOUT_STYLE=menu
     GRUB_TIMEOUT=${toString menuSeconds}
+    # Ubuntu's failed-boot branch has a separate timeout. The factory file
+    # sets it to zero too; preserve a usable recovery menu on that branch.
+    GRUB_RECORDFAIL_TIMEOUT=30
   '';
   configuration = pkgs.runCommand "dgx-kms-persistent-configuration" { } (
     ''mkdir -p "$out"''

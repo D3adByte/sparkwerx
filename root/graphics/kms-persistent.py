@@ -26,11 +26,11 @@ LINKS = ("etc/grub.d/42_sparkwerx_kms", "etc/default/grub.d/zz-sparkwerx-kms.cfg
 ROOT_LINK = "nix/var/nix/gcroots/dgx-setup-kms-persistent"
 SECTION = re.compile(r"^### BEGIN (/etc/grub.d/[^\n]+) ###\n(.*?)^### END \1 ###\n", re.M | re.S)
 
-# Recovery identity for the FIRST failed persistent-KMS attempt, not a moving
-# package dependency or a generic update allowlist. Its menu ordering failed
-# before GRUB publication, and automatic recovery removed its two links. A
-# corrected enable may archive only that exact recovered initial transaction;
-# never accept an active, interrupted, unknown, or stale predecessor here.
+# Recovery identities for the two failed persistent-KMS attempts, not moving
+# package dependencies or a generic update allowlist. Both failed before GRUB
+# publication and recovered their two links. A corrected enable may archive
+# only these exact recovered initial transactions; never accept an active,
+# interrupted, unknown, or stale predecessor here.
 PREVIOUS_BUNDLE = "/nix/store/kzjrqwgbbji4xbs7sibmh7fqsrc0xkj4-dgx-kms-persistent"
 PREVIOUS_CONFIGURATION = (
     "/nix/store/27nywkkszswmpsj37191zb80nhszk30g-dgx-kms-persistent-configuration"
@@ -38,6 +38,20 @@ PREVIOUS_CONFIGURATION = (
 PREVIOUS_DEFAULT = "etc/default/grub.d/90-sparkwerx-kms.cfg"
 RETRY_ARCHIVE = "var/lib/dgx-setup/kms-persistent-before-menu-fix"
 PREVIOUS_ROOT = ROOT_LINK + "-before-menu-fix"
+RECOVERED_ATTEMPTS = (
+    {
+        "bundle": PREVIOUS_BUNDLE,
+        "configuration": PREVIOUS_CONFIGURATION,
+        "archive": RETRY_ARCHIVE,
+        "root": PREVIOUS_ROOT,
+    },
+    {
+        "bundle": "/nix/store/d493yyvp92209gyh9xk5a5zi91sn7kbp-dgx-kms-persistent",
+        "configuration": "/nix/store/s5mzlhqbhkihlxsm5s4pw9qb569a5bpn-dgx-kms-persistent-configuration",
+        "archive": "var/lib/dgx-setup/kms-persistent-before-recordfail-fix",
+        "root": ROOT_LINK + "-before-recordfail-fix",
+    },
+)
 
 
 def first_body(config):
@@ -287,15 +301,14 @@ class Persistent:
             "Tailscale access is not healthy",
         )
 
-    def initial_check(self, *, allow_previous=False):
+    def initial_check(self, *, previous_bundle=None):
         self.health()
         self.environment()
         if os.path.lexists(self.retention):
             require(
                 self.retention.is_symlink()
                 and self.retention.lstat().st_uid == trial.OWNER
-                and os.readlink(self.retention)
-                in ({self.bundle, PREVIOUS_BUNDLE} if allow_previous else {self.bundle}),
+                and os.readlink(self.retention) in {self.bundle, previous_bundle},
                 "foreign KMS retention root",
             )
         require(not self.ownership(), "KMS configuration already exists")
@@ -430,27 +443,44 @@ class Persistent:
         return {"status": "TRANSACTION_RECOVERED", "bootConfigurationRestored": True}
 
     def prepare_retry(self, *, dry_run=False):
-        """Preserve the exact recovered menu-order attempt before a fresh enable.
+        """Preserve a known recovered menu attempt before a fresh enable.
 
         The old snapshot and executable remain under explicit archive/root
         paths. Each step can be retried after interruption; none touches /etc,
         grub.cfg, or the old journal. This is not active-configuration migration.
         """
-        archive = self.root / RETRY_ARCHIVE
-        old_root = self.root / PREVIOUS_ROOT
         if os.path.lexists(self.state):
             trial.directory(self.state)
             data = json.loads(trial.read_owned(self.state / "journal.json"))
             if data.get("bundle") == self.bundle:
                 return False
+            attempt = next(
+                (item for item in RECOVERED_ATTEMPTS if item["bundle"] == data.get("bundle")),
+                None,
+            )
+            require(attempt is not None, "unknown KMS predecessor; use the retained operator")
+            archive = self.root / attempt["archive"]
             require(not os.path.lexists(archive), "KMS retry archive collision")
             previous_state = self.state
-        elif os.path.lexists(archive):
-            previous_state = archive
         else:
-            return False
+            # If interrupted after archiving, resume the newest known attempt.
+            # The older menu-order archive can coexist and is never modified.
+            attempt = next(
+                (
+                    item
+                    for item in reversed(RECOVERED_ATTEMPTS)
+                    if os.path.lexists(self.root / item["archive"])
+                ),
+                None,
+            )
+            if attempt is None:
+                return False
+            archive = self.root / attempt["archive"]
+            previous_state = archive
 
-        old = Persistent(self.plan, PREVIOUS_CONFIGURATION, PREVIOUS_BUNDLE, self.root)
+        old_root = self.root / attempt["root"]
+        previous_bundle = attempt["bundle"]
+        old = Persistent(self.plan, attempt["configuration"], previous_bundle, self.root)
         old.state = previous_state
         old.retention = old_root if previous_state == archive else self.retention
         data = old.load()  # Exact predecessor identity, private journal, and checksums.
@@ -473,19 +503,19 @@ class Persistent:
             == trial.read_owned(previous_state / data["transaction"] / "before"),
             "retry requires exact recovered factory GRUB",
         )
-        self.initial_check(allow_previous=True)
+        self.initial_check(previous_bundle=previous_bundle)
         trial.directory(old_root.parent)
         if os.path.lexists(old_root):
             require(
                 old_root.is_symlink()
                 and old_root.lstat().st_uid == trial.OWNER
-                and os.readlink(old_root) == PREVIOUS_BUNDLE,
+                and os.readlink(old_root) == previous_bundle,
                 "foreign previous KMS retention root",
             )
         if dry_run:
             return True
         if not os.path.lexists(old_root):
-            old_root.symlink_to(PREVIOUS_BUNDLE)
+            old_root.symlink_to(previous_bundle)
             trial.fsync_directory(old_root.parent)
         if previous_state == self.state:
             require(not os.path.lexists(archive), "KMS retry archive appeared concurrently")
@@ -494,7 +524,7 @@ class Persistent:
         require(
             self.retention.is_symlink()
             and self.retention.lstat().st_uid == trial.OWNER
-            and os.readlink(self.retention) in {PREVIOUS_BUNDLE, self.bundle},
+            and os.readlink(self.retention) in {previous_bundle, self.bundle},
             "KMS retention changed during retry preparation",
         )
         # The old code is already independently rooted and its complete state

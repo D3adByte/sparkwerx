@@ -20,8 +20,9 @@ passed afterward. [Temporary Hyprland capture also passed](../remote-desktop/val
 Sunshine's changing-frame encoder tests and a MacBook/Moonlight connection
 subsequently passed too. A later normal reboot returned to factory KMS off,
 as the one-boot trial was designed to do. Persistent KMS is selected for
-the pilot. Its first activation stopped on a factory drop-in ordering conflict;
-the corrected operator below still needs its successful host retry and boot.
+the pilot. Two activation attempts stopped on factory menu settings and
+recovered. The corrected operator below still needs its successful host retry
+and boot.
 
 ## Persistent KMS: optional boot configuration
 
@@ -54,7 +55,8 @@ This deploys two Nix-store symlinks:
 
 - `/etc/default/grub.d/zz-sparkwerx-kms.cfg`: append
   `nvidia_drm.modeset=1` to ordinary Ubuntu boot entries and show a five-second
-  GRUB menu. Ubuntu recovery-mode entries do not inherit that argument.
+  GRUB menu, or 30 seconds when Ubuntu records a failed boot. Ubuntu
+  recovery-mode entries do not inherit that argument.
 - `/etc/grub.d/42_sparkwerx_kms`: generate **Sparkwerx: factory settings
   (NVIDIA KMS off)** from Ubuntu's current default kernel entry, with
   `nvidia_drm.modeset=0` and its own unique menu ID.
@@ -63,6 +65,10 @@ The `zz-` prefix matters: Ubuntu sources the defaults in filename order, and
 the factory `no-grubmenu.cfg` hides the menu. A numeric `90-` prefix loads
 before that file, not after it. Keep the factory file installed and unchanged;
 the selected override must win, and the generated-menu check must still pass.
+The same factory file also sets `GRUB_RECORDFAIL_TIMEOUT=0`; the adapter must
+override that separately with 30 seconds. Otherwise the ordinary menu works
+but Ubuntu's failed-boot branch still skips it. Keep the verifier's check of
+every timeout branch; don't accept zero just because another branch uses five.
 
 The fallback runs the installed Ubuntu `10_linux` generator whenever GRUB is
 regenerated. It keeps the current kernel, initramfs, and disk arguments; it
@@ -136,22 +142,26 @@ Selecting KMS does not select GNOME Wayland. Keep the initial rollout headless;
 before enabling factory GDM with KMS loaded, implement and test its explicit
 Xorg session policy. The boot fallback itself uses KMS off.
 
-### Retrying the first menu-order failure
+### Retrying the recovered menu failures
 
-Use the same `enable --console-ready` command. It accepts the first attempt's
-retained state only after proving that automatic recovery restored the exact
-factory GRUB, neither old nor new managed link remains, and factory inputs
+Use the same `enable --console-ready` command. It accepts either known failed
+attempt's retained state only after proving that automatic recovery restored
+the exact factory GRUB, neither old nor new managed link remains, and factory inputs
 still match. An active, interrupted, unknown, or stale transaction is refused.
 `check` can perform those retry checks without changing anything.
 
-The retry preserves the old snapshot at
+For the original menu-order attempt, the retry preserves the old snapshot at
 `/var/lib/dgx-setup/kms-persistent-before-menu-fix` and its executable at
 `/nix/var/nix/gcroots/dgx-setup-kms-persistent-before-menu-fix`, then selects the
-corrected operator and takes a new snapshot. It can resume after interruption
-between those steps. Do not delete the state or roots to get past a collision.
-The old output IDs in the code identify this specific recovered attempt, not
-an upstream version pin or permission to migrate other live configurations.
-See the [failure and regression record](../root/graphics/validation/2026-09-07-persistent-kms-menu-order.md).
+corrected operator and takes a new snapshot. The subsequent failed-boot-timeout
+attempt is preserved separately under `kms-persistent-before-recordfail-fix`
+and the matching `dgx-setup-kms-persistent-before-recordfail-fix` GC root. The
+earlier history remains untouched. Retry can resume after interruption between
+retention, archiving, and code selection. Do not delete state or roots to get
+past a collision. The old output IDs in the code identify these specific
+recovered attempts, not upstream version pins or permission to migrate other
+live configurations. See the [menu-order record](../root/graphics/validation/2026-09-07-persistent-kms-menu-order.md)
+and [failed-boot-timeout regression](../root/graphics/validation/2026-09-22-persistent-kms-recordfail.md).
 
 ## Current commands
 

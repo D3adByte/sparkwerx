@@ -33,6 +33,21 @@ fi
 set timeout_style=hidden
 set timeout=0
 """
+# The installed Ubuntu 00_header has separate recordfail, normal-menu, and
+# legacy-menu branches. The factory no-grubmenu.cfg sets BOTH timeouts to 0.
+TIMEOUT_HEADER = """if [ "${recordfail}" = 1 ] ; then
+  set timeout=RECORDFAIL
+else
+  if [ x$feature_timeout_style = xy ] ; then
+    set timeout_style=menu
+    set timeout=5
+  # Fallback normal timeout code in case the timeout_style feature is
+  # unavailable.
+  else
+    set timeout=5
+  fi
+fi
+"""
 BODY = """  recordfail
   load_video
   insmod gzio
@@ -143,6 +158,33 @@ class GeneratorTests(unittest.TestCase):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
                 kms.check_enabled(changed)
 
+    def test_failed_boot_timeout_must_also_leave_the_menu_accessible(self):
+        for timeout in ("0", "-1", "4", "31", "${foreign}"):
+            changed = fixture(True).replace(
+                "set timeout_style=menu\nset timeout=5\n",
+                TIMEOUT_HEADER.replace("RECORDFAIL", timeout),
+            )
+            with self.subTest(timeout=timeout), self.assertRaisesRegex(ValueError, "timeout"):
+                kms.check_enabled(changed)
+        visible = fixture(True).replace(
+            "set timeout_style=menu\nset timeout=5\n",
+            TIMEOUT_HEADER.replace("RECORDFAIL", "30"),
+        )
+        factory = fixture().replace(
+            "set timeout_style=hidden\nset timeout=0\n",
+            TIMEOUT_HEADER.replace("RECORDFAIL", "0")
+            .replace("timeout_style=menu", "timeout_style=hidden")
+            .replace("timeout=5", "timeout=0"),
+        )
+        kms.verify_change(factory, visible)
+        kms.check_enabled(visible)
+        checker = shutil.which("grub-script-check")
+        if checker:
+            result = subprocess.run(
+                [checker], input=visible, capture_output=True, text=True, check=False
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_fallback_refuses_unsupported_factory_entry_shape(self):
         for changed in (
             fixture(True).replace("  load_video", "  source /foreign.cfg"),
@@ -211,7 +253,7 @@ class GeneratorTests(unittest.TestCase):
             [
                 "sh",
                 "-c",
-                'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"; . "$1"; printf "%s\\n" "$GRUB_CMDLINE_LINUX_DEFAULT" "$GRUB_TIMEOUT_STYLE" "$GRUB_TIMEOUT"',
+                'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"; . "$1"; printf "%s\\n" "$GRUB_CMDLINE_LINUX_DEFAULT" "$GRUB_TIMEOUT_STYLE" "$GRUB_TIMEOUT" "$GRUB_RECORDFAIL_TIMEOUT"',
                 "fixture",
                 str(defaults),
             ],
@@ -222,7 +264,7 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(
             result.stdout.splitlines(),
-            ["quiet splash " + kms.ARG_ON, "menu", os.environ["DGX_KMS_TEST_MENU_SECONDS"]],
+            ["quiet splash " + kms.ARG_ON, "menu", os.environ["DGX_KMS_TEST_MENU_SECONDS"], "30"],
         )
         self.assertTrue(os.access(path / kms.LINKS[0], os.X_OK))
 
@@ -237,8 +279,12 @@ class GeneratorTests(unittest.TestCase):
             folder = Path(temporary)
             # The factory grub-mkconfig sources *.cfg in shell glob order.
             # Numeric prefixes precede BOTH of these installed factory files.
-            (folder / "menu.cfg").write_text("GRUB_TIMEOUT=5\nGRUB_TIMEOUT_STYLE=menu\n")
-            (folder / "no-grubmenu.cfg").write_text("GRUB_TIMEOUT=0\nGRUB_TIMEOUT_STYLE=hidden\n")
+            (folder / "menu.cfg").write_text(
+                "GRUB_TIMEOUT=5\nGRUB_TIMEOUT_STYLE=menu\nGRUB_HIDDEN_TIMEOUT_QUIET=false\n"
+            )
+            (folder / "no-grubmenu.cfg").write_text(
+                "GRUB_TIMEOUT=0\nGRUB_TIMEOUT_STYLE=hidden\nGRUB_RECORDFAIL_TIMEOUT=0\n"
+            )
             (folder / "nvidia-spark-pci.cfg").write_text(
                 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT factory-pci=fixture"\n'
             )
@@ -248,7 +294,7 @@ class GeneratorTests(unittest.TestCase):
                     "sh",
                     "-c",
                     'GRUB_CMDLINE_LINUX_DEFAULT=quiet; for x in "$1"/*.cfg; do . "$x"; done; '
-                    'printf "%s\\n" "$GRUB_TIMEOUT_STYLE" "$GRUB_TIMEOUT" "$GRUB_CMDLINE_LINUX_DEFAULT"',
+                    'printf "%s\\n" "$GRUB_TIMEOUT_STYLE" "$GRUB_TIMEOUT" "$GRUB_RECORDFAIL_TIMEOUT" "$GRUB_CMDLINE_LINUX_DEFAULT"',
                     "fixture",
                     str(folder),
                 ],
@@ -263,6 +309,7 @@ class GeneratorTests(unittest.TestCase):
             [
                 "menu",
                 os.environ["DGX_KMS_TEST_MENU_SECONDS"],
+                "30",
                 "quiet factory-pci=fixture " + kms.ARG_ON,
             ],
         )
@@ -281,8 +328,14 @@ class Fake(kms.Persistent):
         self.power_cut = None
         self.events = []
 
-    def initial_check(self, *, allow_previous=False):
+    def initial_check(self, *, previous_bundle=None):
         self.health()
+        if os.path.lexists(self.retention):
+            kms.require(
+                self.retention.is_symlink()
+                and os.readlink(self.retention) in {self.bundle, previous_bundle},
+                "foreign KMS retention root",
+            )
         kms.require(not self.ownership(), "foreign initial state")
 
     def health(self):
@@ -515,6 +568,8 @@ class TransactionTests(TemporaryBootTestCase):
 
 
 class RetryTests(TemporaryBootTestCase):
+    attempt = kms.RECOVERED_ATTEMPTS[0]
+
     def seed_previous(self):
         self.ops.state.mkdir(mode=0o700)
         transaction = self.ops.state / "txn-menu-order"
@@ -530,22 +585,22 @@ class RetryTests(TemporaryBootTestCase):
         data = {
             "schema": 1,
             "phase": "recovered",
-            "bundle": kms.PREVIOUS_BUNDLE,
-            "configuration": kms.PREVIOUS_CONFIGURATION,
+            "bundle": self.attempt["bundle"],
+            "configuration": self.attempt["configuration"],
             "transaction": transaction.name,
             "wasEnabled": False,
             "inputs": self.ops.fingerprint(),
             "hashes": {"before": checksum, "baseline": checksum},
         }
         self.ops.journal(data)
-        self.ops.retention.symlink_to(kms.PREVIOUS_BUNDLE)
+        self.ops.retention.symlink_to(self.attempt["bundle"])
         return data
 
     def assert_previous_preserved(self, journal):
-        archive = self.root / kms.RETRY_ARCHIVE
+        archive = self.root / self.attempt["archive"]
         self.assertEqual((archive / "journal.json").read_bytes(), journal)
         self.assertEqual((archive / "txn-menu-order/before").read_text(), fixture())
-        self.assertEqual(os.readlink(self.root / kms.PREVIOUS_ROOT), kms.PREVIOUS_BUNDLE)
+        self.assertEqual(os.readlink(self.root / self.attempt["root"]), self.attempt["bundle"])
         self.assertEqual(os.readlink(self.ops.retention), self.ops.bundle)
 
     def test_retry_archives_only_recovered_attempt_and_preserves_old_code(self):
@@ -562,9 +617,9 @@ class RetryTests(TemporaryBootTestCase):
         journal = (self.ops.state / "journal.json").read_bytes()
         self.assertTrue(self.ops.prepare_retry(dry_run=True))
         self.assertEqual((self.ops.state / "journal.json").read_bytes(), journal)
-        self.assertEqual(os.readlink(self.ops.retention), kms.PREVIOUS_BUNDLE)
-        self.assertFalse((self.root / kms.RETRY_ARCHIVE).exists())
-        self.assertFalse(os.path.lexists(self.root / kms.PREVIOUS_ROOT))
+        self.assertEqual(os.readlink(self.ops.retention), self.attempt["bundle"])
+        self.assertFalse((self.root / self.attempt["archive"]).exists())
+        self.assertFalse(os.path.lexists(self.root / self.attempt["root"]))
         self.assertEqual(self.ops.grub.read_text(), fixture())
         self.assertEqual(self.ops.ownership(), [])
 
@@ -584,19 +639,41 @@ class RetryTests(TemporaryBootTestCase):
                 with self.assertRaises(ValueError):
                     self.ops.apply(True, True)
                 self.assertEqual((self.ops.state / "journal.json").read_bytes(), journal)
-                self.assertEqual(os.readlink(self.ops.retention), kms.PREVIOUS_BUNDLE)
-                self.assertFalse((self.root / kms.RETRY_ARCHIVE).exists())
+                self.assertEqual(os.readlink(self.ops.retention), self.attempt["bundle"])
+                self.assertFalse((self.root / self.attempt["archive"]).exists())
                 self.assertEqual(self.ops.ownership(), [])
 
     def test_retry_preserves_foreign_previous_root(self):
         self.seed_previous()
-        previous_root = self.root / kms.PREVIOUS_ROOT
+        previous_root = self.root / self.attempt["root"]
         previous_root.symlink_to("/foreign")
         with self.assertRaises(ValueError):
             self.ops.apply(True, True)
         self.assertEqual(os.readlink(previous_root), "/foreign")
         self.assertTrue(self.ops.state.exists())
-        self.assertFalse((self.root / kms.RETRY_ARCHIVE).exists())
+        self.assertFalse((self.root / self.attempt["archive"]).exists())
+
+    def test_retry_preserves_foreign_archive_collision(self):
+        self.seed_previous()
+        archive = self.root / self.attempt["archive"]
+        archive.mkdir()
+        (archive / "sentinel").write_text("foreign")
+        with self.assertRaisesRegex(ValueError, "archive collision"):
+            self.ops.apply(True, True)
+        self.assertEqual((archive / "sentinel").read_text(), "foreign")
+        self.assertEqual(os.readlink(self.ops.retention), self.attempt["bundle"])
+        self.assertTrue(self.ops.state.exists())
+
+    def test_retry_refuses_predecessor_with_published_candidate(self):
+        data = self.seed_previous()
+        after = fixture(True).encode()
+        kms.trial.publish(self.ops.state / data["transaction"] / "after", after)
+        data["hashes"]["after"] = kms.trial.digest(after)
+        self.ops.journal(data)
+        with self.assertRaisesRegex(ValueError, "exact recovered initial attempt"):
+            self.ops.apply(True, True)
+        self.assertEqual(os.readlink(self.ops.retention), self.attempt["bundle"])
+        self.assertFalse((self.root / self.attempt["archive"]).exists())
 
     def test_retry_refuses_stale_grub_and_leftover_old_dropin(self):
         self.seed_previous()
@@ -610,7 +687,7 @@ class RetryTests(TemporaryBootTestCase):
         with self.assertRaises(ValueError):
             self.ops.apply(True, True)
         self.assertEqual(previous_default.read_text(), "foreign\n")
-        self.assertFalse((self.root / kms.RETRY_ARCHIVE).exists())
+        self.assertFalse((self.root / self.attempt["archive"]).exists())
 
     def assert_retry_survives_interruption(self, point):
         self.seed_previous()
@@ -619,13 +696,13 @@ class RetryTests(TemporaryBootTestCase):
 
         def symlink(path, target, **kwargs):
             result = original_link(path, target, **kwargs)
-            if point == "retain" and path == self.root / kms.PREVIOUS_ROOT:
+            if point == "retain" and path == self.root / self.attempt["root"]:
                 raise PowerCut
             return result
 
         def rename(path, target):
             result = original_rename(path, target)
-            if point == "archive" and target == self.root / kms.RETRY_ARCHIVE:
+            if point == "archive" and target == self.root / self.attempt["archive"]:
                 raise PowerCut
             return result
 
@@ -667,6 +744,39 @@ class RetryTests(TemporaryBootTestCase):
         self.assert_previous_preserved(journal)
         self.ops.bad_generator = False
         self.assertEqual(self.ops.apply(True, True)["status"], "PERSISTENT_PENDING_REBOOT")
+
+
+class RecordfailRetryTests(RetryTests):
+    # Exercise the entire retry/refusal/interruption suite again with the
+    # second recovered bundle AND the first attempt already safely archived.
+    attempt = kms.RECOVERED_ATTEMPTS[1]
+
+    def seed_previous(self):
+        data = super().seed_previous()
+        archive = self.root / kms.RETRY_ARCHIVE
+        shutil.copytree(self.ops.state, archive)
+        original = {
+            **data,
+            "bundle": kms.PREVIOUS_BUNDLE,
+            "configuration": kms.PREVIOUS_CONFIGURATION,
+        }
+        (archive / "journal.json").write_text(json.dumps(original) + "\n")
+        (self.root / kms.PREVIOUS_ROOT).symlink_to(kms.PREVIOUS_BUNDLE)
+        self.original_history = self.history(archive)
+        return data
+
+    @staticmethod
+    def history(archive):
+        return {
+            str(path.relative_to(archive)): path.read_bytes()
+            for path in archive.rglob("*")
+            if path.is_file()
+        }
+
+    def assert_previous_preserved(self, journal):
+        super().assert_previous_preserved(journal)
+        self.assertEqual(self.history(self.root / kms.RETRY_ARCHIVE), self.original_history)
+        self.assertEqual(os.readlink(self.root / kms.PREVIOUS_ROOT), kms.PREVIOUS_BUNDLE)
 
 
 if __name__ == "__main__":
