@@ -18,6 +18,9 @@ Upstream base: `fd5cf97b50dacac4692f270aeb76cd6acd4b6d5d`.
   The latter exercises its terminal-too-small message.
 - The ARM64 workstation derivation evaluated successfully. This alone does
   not establish an ARM64 package build or runtime pass.
+- `nix flake check --no-build --all-systems --no-write-lock-file` passed for
+  the complete flake. These are evaluations, not executions of its systemd
+  container tests.
 - Modified Python passed Ruff lint/format; modified Nix passed nixfmt.
   Documentation and whitespace checks passed.
 
@@ -53,3 +56,57 @@ complete NVIDIA's cleanup; then recheck host health before bootstrap.
 No OS snapshots, host reboot, Nix installation, or package-profile activation
 are claimed by these tests. Existing terminal dotfiles remain managed by their
 previous deployment.
+
+## Later host checkpoint: desktop retention selected
+
+The owner explicitly chose to keep the desktop applications. They executed
+the reviewed `~/keep-desktop.sh` through their own sudo terminal. It recorded
+the unit's previous state under `~/.local/state/terminal-setup/`, disabled only
+the one-time package-removal service, and acknowledged that unit's failure.
+Independent SSH checks then confirmed:
+
+- systemd status `running`;
+- the one-time service `disabled`, `inactive`, result `success`;
+- GNOME Software and Contacts still installed;
+- GDM, SSH, Docker, NVIDIA persistence, Dashboard, and Dashboard Admin active.
+
+The original health hold is resolved. No packages were removed and no reboot
+occurred. Re-enabling this unit would restore its pending removal at a future
+boot; that would reverse the owner's selected policy and is not automatic
+recovery behavior.
+
+The official installer freshness check found a separate hold:
+the repository pins 2.35.1, while the currently published installer is 2.35.2
+(ARM64 SHA-256 `a1b35e56da5adadbc117c3cf17b83948ac657f3c0bd79d47bbe0aa70832b5c8e`).
+The check verified the downloaded artifact and returned its documented
+update-needed exit status. The pin has not been changed and host Nix remains
+absent. Updating it affects the existing bootstrap lifecycle evidence and
+must receive matching installation/uninstall/recovery tests before activation.
+
+## Native ARM64 package validation
+
+The separate `sparkwerx-workstation-validation` Docker container built the
+workstation package successfully on the Spark. Its only host bind mount was
+the checkout, read-only; it had no GPU access, Docker socket mount, privileged
+mode, host Nix store, or host home-directory mount.
+
+Image: `nixos/nix:2.35.2`, manifest digest
+`sha256:7a007c766426c1877758ddc5cb87a965ac131fc78c582ce0083d922d51ae945c`.
+Docker inspected its selected architecture as `arm64`.
+
+Built derivation:
+`/nix/store/w46bph3llxr3yb5wam67s4g527503aia-sparkwerx-deadspark.drv`.
+Output:
+`/nix/store/19ppl4g73746z67i8xwnd0apfdnrz8yp-sparkwerx-deadspark`.
+
+Version checks passed for ncdu 2.9.2, lazydocker 0.25.2, Devbox 0.18.0,
+nh 4.4.2, and fzf 0.72.0. Help/startup checks passed for nix-output-monitor
+2.2.0 and nix-search-tv 2.2.7; their versions came from the built manifest.
+nix-search-tv does not implement `--version`, so its initially rejected version
+flag was replaced with its supported help check. The packaged `spark` launcher
+ran after its expected checkout path was provided inside the container.
+
+The real Nix-profile lifecycle test passed again natively on ARM64. In
+addition, the actual package output above was activated, disabled, and restored
+in a temporary container-only profile, with its executable postflight passing
+on both activations. These checks did not create a host package profile.

@@ -25,6 +25,7 @@ Inspect the actual host before treating that checkpoint as current.
 
 | Task | Entry point |
 | --- | --- |
+| deadspark factory-GNOME workstation | `./scripts/dgx-workstation`; read [workstation contract](workstations/README.md) and [current evidence](workstations/VALIDATION.md) |
 | Read-only declaration/host comparison | `./scripts/dgx-setup plan [HOSTNAME]` |
 | Initial setup of a declared new host | `./scripts/dgx-setup converge [HOSTNAME]` |
 | Nix-only bootstrap/adoption | `./scripts/dgx-setup bootstrap [HOSTNAME]` |
@@ -36,6 +37,12 @@ Inspect the actual host before treating that checkpoint as current.
 
 Only `plan` and `status` are inspection routes. Do not invent subcommands;
 check the implementation and [operations guide](docs/operations.md).
+
+The workstation is a separate user-package lifecycle. Its owner explicitly
+keeps GNOME and the installed desktop applications. Do not route this host
+through the headless convergence or pilot Home activation operators. Its
+`plan`, `status`, and `generations` commands inspect; `build` realizes a candidate
+without activation. Follow its documented installer hold before host setup.
 
 The separate remote-desktop `check` command is read-only too. Read
 [remote desktop](docs/remote-desktop.md) before remote graphics work. The chosen

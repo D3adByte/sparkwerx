@@ -804,3 +804,8 @@ It does not run Home Manager file/service activation, System Manager, Tailscale
 migration, desktop switching, or a reboot. Existing dotfiles keep their owner.
 The workstation management tools belong to this user selection, not the shared
 three-package fleet base. See [the operator contract](../workstations/README.md).
+
+The owner subsequently confirmed retention of desktop applications. The
+one-time NVIDIA removal job was disabled through their sudo terminal, with
+its prior state recorded; GNOME Software/Contacts remain installed and host
+health is `running`. See [the validation checkpoint](../workstations/VALIDATION.md).
