@@ -398,6 +398,7 @@ def execute(action, host, value=None):
 
 
 def tui(host):
+    configure_terminal()
     menu = [
         ("Status", "status"),
         ("Finish setup: install Nix and selected tools", "setup"),
@@ -426,7 +427,10 @@ def tui(host):
 
         def screen(stdscr):
             nonlocal selection
-            curses.curs_set(0)
+            try:
+                curses.curs_set(0)
+            except curses.error:
+                pass
             stdscr.keypad(True)
             while True:
                 stdscr.erase()
@@ -501,6 +505,22 @@ def tui(host):
         input("\nPress Enter to return to the menu.")
 
 
+def configure_terminal():
+    # Nix's ncurses defaults need not include Ubuntu's APT terminal database.
+    # Preserve custom directories and the real TERM; append host definitions
+    # and an empty entry for ncurses' compiled-in defaults.
+    directories = os.environ.get("TERMINFO_DIRS", "").split(":")
+    directories += [
+        str(Path.home() / ".terminfo"),
+        "/etc/terminfo",
+        "/usr/share/terminfo",
+        "/lib/terminfo",
+        "/usr/lib/kitty/terminfo",
+        "",
+    ]
+    os.environ["TERMINFO_DIRS"] = ":".join(dict.fromkeys(directories))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -544,6 +564,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+    except (ValueError, OSError, subprocess.CalledProcessError, curses.error) as error:
         print(f"FAIL: {error}", file=sys.stderr)
         raise SystemExit(1) from error
