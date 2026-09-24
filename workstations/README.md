@@ -82,7 +82,9 @@ The CLI is available for every action. `spark --help` lists them. The menu's
 save action commits only the package selection and lock file, refuses unrelated
 changes, and uses a local `sparkwerx@localhost` author. It never pushes.
 
-`nh` provides package search and build inspection, and `nix-search-tv` provides
+`nh` provides package search and build inspection. Catalog search uses the
+workstation's selected stable channel; the committed lock file determines
+the actual build version, which may lag the live catalog. `nix-search-tv` provides
 search data for fzf/Television. Use the Sparkwerx operator to activate or roll
 back this profile: an unrelated `nh home switch` would use a different profile
 and activation contract. There is no generation-deletion or garbage-collection

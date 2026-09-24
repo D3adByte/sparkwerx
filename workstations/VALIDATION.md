@@ -152,3 +152,28 @@ short-circuiting, adapter/pin isolation, search before setup, and the previous
 package recovery tests. Host installation can now use `spark setup`; its sudo
 phase remains interactive and its actual hardware/service postflight is
 required separately. These disposable results do not claim host activation.
+
+## Healthy Tailscale with optional SSH disabled
+
+The first actual host setup stopped before Nix installation. Sanitized
+inspection showed an active Tailscale daemon, `BackendState=Running`,
+`Online=true`, `WantRunning=true`, and `RunSSH=false`. This is a healthy VPN;
+the optional Tailscale SSH server is not selected for this workstation. The
+owner explicitly requires Tailscale to remain running.
+
+The workstation bootstrap is now a dedicated copy of the upstream operator,
+with one policy difference (plus shell formatting): it accepts the healthy
+VPN state above when `sshDesired=false`. If SSH is desired, it still requires
+that feature. Unreadable/offline/unhealthy state still fails. Existing exact
+before/after state, service PID/start-time, and recovery checks remain intact.
+The updater and rollback remain symlinks to unchanged upstream code; the
+original pilot bootstrap remains unchanged.
+
+The full native Ubuntu/systemd lifecycle was repeated from a fresh container
+at fixture commit `e5443c0`, with a synthetic active Tailscale service and VPN
+reporting `RunSSH=false`. Offline Tailscale was first rejected before Nix
+installation. After restoring its healthy fixture state, installation with
+injected failure, systemd-driven receipt rollback, clean reinstall, recovery
+disarming, and idempotent normal-user adoption all passed. The protected
+Tailscale service and sanitized connection/preferences stayed exact throughout.
+No actual host Tailscale setting or service was changed by this test.

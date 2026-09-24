@@ -58,7 +58,11 @@ def search_packages(query):
             print(message)
             return
         raise ValueError(message)
-    run(["nh", "search", query])
+    lock = json.loads((ROOT / "flake.lock").read_text())
+    package_node = lock["nodes"]["root"]["inputs"]["nixpkgs-workstation"]
+    channel = lock["nodes"][package_node]["original"]["ref"]
+    print(f"Searching the {channel} catalog; builds use the committed package pin.")
+    run(["nh", "search", "--channel", channel, query])
 
 
 def write_json(path, value):

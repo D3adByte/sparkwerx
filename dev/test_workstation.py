@@ -225,7 +225,7 @@ class SearchTests(unittest.TestCase):
             patch.object(ws, "run") as command,
         ):
             ws.execute("search", "spark-9667", "nmtui")
-        command.assert_called_once_with(["nh", "search", "nmtui"])
+        command.assert_called_once_with(["nh", "search", "--channel", "nixos-26.05", "nmtui"])
 
     def test_missing_nix_binary_has_setup_guidance(self):
         with patch.object(ws.subprocess, "run", side_effect=FileNotFoundError("nix")):

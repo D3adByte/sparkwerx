@@ -815,3 +815,9 @@ input root that symlinks the unchanged upstream bootstrap operators. Its
 native Ubuntu/systemd install/failure/receipt rollback/retry/adoption tests
 passed. `spark setup` composes that guarded bootstrap and the user profile;
 the original pilot's provisioning pin and root ownership remain unchanged.
+
+The owner explicitly requires the existing Tailscale VPN to stay on. Its SSH
+feature is separately disabled and unselected. The workstation bootstrap now
+permits that healthy state and still requires exact VPN/daemon continuity;
+it does not enable Tailscale SSH, change enrollment/preferences, or restart
+network services. The full disposable lifecycle with this state passed.
