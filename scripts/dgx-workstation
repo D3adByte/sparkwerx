@@ -27,9 +27,38 @@ ATTR = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*")
 
 
 def run(args, *, capture=False):
-    return subprocess.run(
-        args, check=True, text=True, cwd=ROOT, stdout=subprocess.PIPE if capture else None
-    ).stdout
+    try:
+        return subprocess.run(
+            args, check=True, text=True, cwd=ROOT, stdout=subprocess.PIPE if capture else None
+        ).stdout
+    except FileNotFoundError as error:
+        command = Path(args[0]).name
+        if command in ("nh", "nix", "nix-env"):
+            raise ValueError(
+                f"{command} is not available in PATH. Nix workstation setup is incomplete "
+                "or this shell needs refreshing. Use Status to check setup; "
+                "host installation must pass the documented bootstrap checks."
+            ) from error
+        raise
+
+
+def search_packages(query):
+    if not query:
+        raise ValueError("Supply a package search query")
+    installed = shutil.which(query) if "/" not in query else None
+    if installed:
+        print(f"Already available on this machine: {installed}")
+        print("No additional installation is needed to run this command.")
+    if not shutil.which("nh"):
+        message = (
+            "Nix package catalog search is unavailable: nh is not in PATH. "
+            "Use Status to check the pending Nix workstation setup."
+        )
+        if installed:
+            print(message)
+            return
+        raise ValueError(message)
+    run(["nh", "search", query])
 
 
 def write_json(path, value):
@@ -254,9 +283,7 @@ def execute(action, host, value=None):
             marker = " (active)" if target == profile.current() else ""
             print(f"{number}{marker}: {target}")
     elif action == "search":
-        if not value:
-            raise ValueError("Supply a package search query")
-        run(["nh", "search", value])
+        search_packages(value)
     elif action in ("add", "remove"):
         if not value or not ATTR.fullmatch(value) or value in BASE:
             raise ValueError("Supply a package attribute outside the fixed fleet base")
@@ -373,6 +400,12 @@ def tui(host):
     ]
     selection = 0
     while True:
+        if not shutil.which("nix"):
+            setup_notice = "Setup incomplete: Nix unavailable. See Status."
+        elif not shutil.which("nh"):
+            setup_notice = "Package search unavailable: nh missing from PATH."
+        else:
+            setup_notice = ""
 
         def screen(stdscr):
             nonlocal selection
@@ -388,6 +421,7 @@ def tui(host):
                 else:
                     stdscr.addnstr(1, 2, "SPARKWERX / WORKSTATION", width - 4, curses.A_BOLD)
                     stdscr.addnstr(2, 2, f"{host}  |  Factory Ubuntu + GNOME", width - 4)
+                    stdscr.addnstr(3, 2, setup_notice, width - 4, curses.A_BOLD)
                     offset = max(0, selection - (height - 8))
                     for row, (label, _) in enumerate(menu[offset : offset + height - 6], 4):
                         index = offset + row - 4

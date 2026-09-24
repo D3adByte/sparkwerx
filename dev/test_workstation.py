@@ -2,6 +2,7 @@
 
 import importlib.machinery
 import importlib.util
+import io
 import json
 import subprocess
 import tempfile
@@ -190,6 +191,46 @@ class SaveTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Other repository changes"):
                     ws.execute("save", "spark-9667")
                 self.assertEqual(ws.run(["git", "diff", "--cached"], capture=True), "")
+
+
+class SearchTests(unittest.TestCase):
+    def test_installed_command_is_reported_without_nix_search_backend(self):
+        output = io.StringIO()
+        with (
+            patch.object(
+                ws.shutil, "which", side_effect=lambda name: {"nmtui": "/usr/bin/nmtui"}.get(name)
+            ),
+            patch.object(ws, "run") as command,
+            patch("sys.stdout", output),
+        ):
+            ws.execute("search", "spark-9667", "nmtui")
+        command.assert_not_called()
+        self.assertIn("Already available on this machine: /usr/bin/nmtui", output.getvalue())
+        self.assertIn("catalog search is unavailable", output.getvalue())
+
+    def test_missing_backend_has_setup_guidance(self):
+        with (
+            patch.object(ws.shutil, "which", return_value=None),
+            patch.object(ws, "run") as command,
+        ):
+            with self.assertRaisesRegex(ValueError, "pending Nix workstation setup"):
+                ws.execute("search", "spark-9667", "uninstalled-example")
+        command.assert_not_called()
+
+    def test_available_backend_still_searches_catalog(self):
+        with (
+            patch.object(
+                ws.shutil, "which", side_effect=lambda name: {"nh": "/example/bin/nh"}.get(name)
+            ),
+            patch.object(ws, "run") as command,
+        ):
+            ws.execute("search", "spark-9667", "nmtui")
+        command.assert_called_once_with(["nh", "search", "nmtui"])
+
+    def test_missing_nix_binary_has_setup_guidance(self):
+        with patch.object(ws.subprocess, "run", side_effect=FileNotFoundError("nix")):
+            with self.assertRaisesRegex(ValueError, "Nix workstation setup is incomplete"):
+                ws.run(["nix", "build"])
 
 
 if __name__ == "__main__":

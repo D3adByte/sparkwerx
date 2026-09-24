@@ -30,6 +30,11 @@ checksums, factory-service checks, and timed rollback.
 ## Setup
 
 The checkout must be at `~/Development/DGX-setup` for the installed launcher.
+For access before Nix installation, `~/.local/bin/spark` can symlink to
+`~/Development/DGX-setup/scripts/dgx-workstation`; the existing Zsh setup puts
+that directory on PATH. The script resolves this link back to the checkout.
+Do not copy the script away from the repository: it needs the accompanying
+host declaration and flake. After an update, quit and reopen any running menu.
 Run the commands on the declared Spark, as `deadspark`, without prefixing the
 whole command with sudo. Bootstrap requests sudo internally.
 
@@ -59,6 +64,9 @@ spark
 The terminal menu uses arrow keys or j/k, Enter, and q. Long-running operations
 show their live output. Changes to package selection and pins only edit the
 working tree; they require review, a build, and a commit before activation.
+Before setup completes, the menu displays a setup notice. Search first reports
+an exact command already available on this machine; catalog search requires
+`nh`. Missing Nix tools report setup guidance instead of a missing-file error.
 The CLI is available for every action. `spark --help` lists them. The menu's
 save action commits only the package selection and lock file, refuses unrelated
 changes, and uses a local `sparkwerx@localhost` author. It never pushes.
