@@ -490,3 +490,9 @@ Python. All are user-profile tools, with no service, listener, driver, desktop,
 or Codex permission configuration. Exact resolved package versions are written
 to each candidate's `workstation.json`. Build/activation status is recorded in
 the workstation validation record; selection alone is not deployment.
+
+The workstation's separate bootstrap pin selects official Nix installer
+2.35.2 (ARM64, SHA-256
+`a1b35e56da5adadbc117c3cf17b83948ac657f3c0bd79d47bbe0aa70832b5c8e`),
+embedding its already selected runtime 2.35.2. The pilot retains its original
+2.35.1 provisioning pin. Both use the same unmodified guarded operator code.

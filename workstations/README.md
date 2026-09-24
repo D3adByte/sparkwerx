@@ -19,13 +19,15 @@ and the `spark` management launcher. Dependencies come from the committed
 lock file. Workstation package updates have a separate `nixpkgs-workstation`
 input; they do not update the root or pilot package pins.
 
-The unchanged upstream Nix installer still reads `fleet/hosts.json`. Its
+The unchanged upstream bootstrap code still reads `fleet/hosts.json`. Its
 `armen` logical key is used only as a compatibility mapping to `deadspark`;
 all personal overlay and Codex flags are false. The actual workstation profile
 is defined separately in `workstations/hosts.json`. Neither the existing
 headless `converge` nor the pilot-specific Home activation operator applies to
 this workstation. The initial installer retains its receipt, snapshots,
-checksums, factory-service checks, and timed rollback.
+checksums, factory-service checks, and timed rollback. The
+[workstation bootstrap inputs](bootstrap/README.md) independently pin installer
+2.35.2; symlinks reuse the upstream operators without changing the pilot pin.
 
 ## Setup
 
@@ -39,13 +41,20 @@ Run the commands on the declared Spark, as `deadspark`, without prefixing the
 whole command with sudo. Bootstrap requests sudo internally.
 
 ```bash
-./scripts/dgx-workstation status
-./scripts/dgx-workstation bootstrap
+spark status
+spark setup
+exec zsh
+spark
 ```
 
-Open a fresh SSH session after Nix bootstrap so its commands enter PATH. Then:
+Setup performs bootstrap, candidate build, package activation, and shell
+integration in order. It stops on failure. The menu provides the same action
+as "Finish setup". Preview displays configuration edits; no edits does not
+mean the declared packages are installed. For individual steps instead:
 
 ```bash
+./scripts/dgx-workstation bootstrap
+exec zsh
 ./scripts/dgx-workstation build
 ./scripts/dgx-workstation plan
 ```

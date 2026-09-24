@@ -246,6 +246,8 @@ def show_status(host, spec, profile):
     )
     print("Selected packages: " + ", ".join(BASE + spec["packages"]))
     print("Existing APT packages and terminal configuration keep their current ownership.")
+    if not shutil.which("nix") or not profile.current():
+        print("Next step: spark setup (installs Nix and activates the selected user tools).")
 
 
 def validated_candidate(path, host, spec):
@@ -273,7 +275,10 @@ def execute(action, host, value=None):
     elif action == "plan":
         show_status(host, spec, profile)
         print("\nConfiguration changes:")
-        run(["git", "diff", "HEAD", "--", "workstations/hosts.json", "flake.lock"])
+        changes = run(
+            ["git", "diff", "HEAD", "--", "workstations/hosts.json", "flake.lock"], capture=True
+        )
+        print(changes or "No configuration edits. Setup may still be pending; see status above.")
         if profile.candidate.exists():
             candidate = validated_candidate(profile.candidate, host, spec)
             print("\nBuilt candidate packages:")
@@ -326,9 +331,15 @@ def execute(action, host, value=None):
             ]
         )
         print("Saved a local configuration revision. Nothing was pushed or activated.")
-    elif action == "bootstrap":
+    elif action in ("bootstrap", "setup"):
         require_target(host, spec)
-        run([str(ROOT / "scripts/bootstrap-nix.sh"), host])
+        run([str(ROOT / "workstations/bootstrap/scripts/bootstrap-nix.sh"), host])
+        if action == "setup":
+            os.environ["PATH"] = "/nix/var/nix/profiles/default/bin:" + os.environ.get("PATH", "")
+            execute("build", host)
+            execute("apply", host)
+            execute("shell", host)
+            print("Setup complete. Run exec zsh, then spark. Factory desktop remains selected.")
     else:
         require_target(host, spec)
         with profile.lock():
@@ -384,6 +395,7 @@ def execute(action, host, value=None):
 def tui(host):
     menu = [
         ("Status", "status"),
+        ("Finish setup: install Nix and selected tools", "setup"),
         ("Preview changes", "plan"),
         ("Search packages", "search"),
         ("Add package selection", "add"),
@@ -455,9 +467,25 @@ def tui(host):
                 ).strip()
                 if not value:
                     continue
-            if action in ("apply", "save", "rollback", "recover", "shell", "update", "disable"):
-                if action in ("apply", "save"):
+            if action in (
+                "apply",
+                "save",
+                "setup",
+                "rollback",
+                "recover",
+                "shell",
+                "update",
+                "disable",
+            ):
+                if action in ("apply", "save", "setup"):
                     execute("plan", host)
+                if action == "setup":
+                    print(
+                        "Installs the Nix daemon/build accounts, selected CLI tools, and Zsh PATH."
+                    )
+                    print(
+                        "Factory OS, GPU stack, desktop, Docker, and SSH retain their current owners."
+                    )
                 if input(f"Run {action}? [y/N] ").strip().lower() != "y":
                     continue
             execute(action, host, value)
@@ -490,6 +518,7 @@ def main():
             "recover",
             "shell",
             "bootstrap",
+            "setup",
             "disable",
         ],
     )

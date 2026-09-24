@@ -1,0 +1,1 @@
+../../../scripts/bootstrap-nix.sh
