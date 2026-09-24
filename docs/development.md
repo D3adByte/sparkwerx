@@ -48,7 +48,9 @@ Some older recovery files have formatting or ShellCheck findings.
 [`dev/legacy-checks.json`](../dev/legacy-checks.json) records exceptions against
 their exact SHA-256 hashes. Unchanged files keep their tested contents; editing
 one invalidates its exception. Fix its findings and remove the entry in the same
-PR. New files get no exceptions. Syntax and documentation checks always run.
+PR. In-repository symlink aliases reuse their target's exact-hash exception;
+copies, new scripts, and external symlinks do not inherit it. Syntax and
+documentation checks always run.
 
 ## Pull requests and CI
 
