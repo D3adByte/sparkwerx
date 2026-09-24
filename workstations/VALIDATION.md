@@ -248,3 +248,26 @@ remained unchanged. Direct package versions were unchanged, while the new
 dependency/build outputs required downloads. The active output was
 `/nix/store/2cnalb5znwld82lhaxv4qlgb5mlny74g-sparkwerx-deadspark` and no
 user recovery journal was pending.
+
+## Branch publication checks
+
+The complete `./scripts/dev check` passed natively on ARM64 at `d34ebdd` in
+the existing disposable validation container: repository lint/format checks,
+documentation checks, 76 Python tests (one existing environment-dependent
+skip), the systemd whole-record parser regression, and the full flake
+evaluation with `--no-build`. This evaluated the container-test derivations;
+it did not rerun their host-transition scenarios.
+
+The initial full-check attempts exposed container setup issues: Git ownership
+of the read-only source mount, Ruff's default cache location, and the minimal
+image's absent `/etc/os-release`. These were resolved inside the container.
+The check also exposed duplicate lint findings through the reused bootstrap
+symlinks. The checker now recognizes an in-repository alias's existing target
+exception only while the exact content hash matches. Regression coverage
+rejects changed content, copied scripts, external links, and unlisted checks.
+No historical script or exception hash was rewritten to pass validation.
+
+A comparison against the upstream base confirmed every pre-existing flake
+input pin remains unchanged. The branch adds only `nixpkgs-workstation` to
+that graph. The final documentation-only evidence update passed the local
+documentation and whitespace checks separately.
