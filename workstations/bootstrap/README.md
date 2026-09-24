@@ -1,8 +1,8 @@
 # Workstation Nix bootstrap
 
-This directory provides a workstation-specific installer pin while reusing the
-upstream bootstrap, updater, and receipt rollback scripts byte-for-byte through
-relative symlinks. The scripts locate their inputs relative to their invocation
+This directory provides a workstation-specific installer pin and bootstrap.
+The updater and receipt rollback scripts are reused through relative symlinks.
+The scripts locate their inputs relative to their invocation
 path. This directory is therefore the bootstrap input root for `spark setup`.
 
 The original pilot installer pin and lifecycle derivations remain unchanged.
@@ -10,6 +10,13 @@ The workstation pin selects the official ARM64 installer 2.35.2 and runtime
 2.35.2. The normal current-release check, clean Git check, root plan validation,
 15-minute rollback timer, protected-service continuity, and exact adoption
 checks all still run. No freshness or recovery checks are skipped.
+
+The bootstrap derives from the upstream operator with one policy difference:
+healthy, running, online Tailscale may have its optional SSH server disabled
+when `sshDesired` is false. When it is true, the SSH feature remains required.
+Offline or unreadable Tailscale still fails preflight. The exact VPN/SSH state,
+daemon PID, unit, and start time must remain unchanged through installation
+and recovery. This operator never changes Tailscale preferences or restarts it.
 
 The selected installer creates `/nix`, the Nix daemon/socket, build accounts,
 Nix configuration, and its standard shell hooks. It does not manage factory

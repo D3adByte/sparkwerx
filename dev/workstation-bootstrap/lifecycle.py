@@ -41,13 +41,30 @@ def main():
     assert run("systemctl", "is-system-running", "--wait").stdout.strip() == "running"
 
     # Synthetic protected services/GPU prove preservation, not hardware behavior.
-    for name in ("gdm", "docker", "dgx-dashboard", "dgx-dashboard-admin", "nvidia-persistenced"):
+    for name in (
+        "gdm",
+        "docker",
+        "dgx-dashboard",
+        "dgx-dashboard-admin",
+        "nvidia-persistenced",
+        "tailscaled",
+    ):
         Path(f"/etc/systemd/system/{name}.service").write_text(
             "[Service]\nExecStart=/usr/bin/sleep infinity\n"
         )
     gpu = Path("/usr/local/bin/nvidia-smi")
     gpu.write_text("#!/bin/sh\nprintf '%s\\n' 'NVIDIA GB10, 580.178.04'\n")
     gpu.chmod(0o755)
+    tailscale = Path("/usr/local/bin/tailscale")
+    tailscale.write_text(
+        "#!/usr/bin/python3\nimport json,sys\nfrom pathlib import Path\n"
+        'if sys.argv[1] == "status":\n'
+        ' print(json.dumps({"BackendState":"Running","Self":{"Online":not Path("/test-offline").exists()}}))\n'
+        'elif sys.argv[1:] == ["debug","prefs"]:\n'
+        ' print(json.dumps({"WantRunning":True,"RunSSH":False}))\n'
+        "else: sys.exit(1)\n"
+    )
+    tailscale.chmod(0o755)
     run("systemctl", "daemon-reload")
     run(
         "systemctl",
@@ -57,6 +74,7 @@ def main():
         "dgx-dashboard",
         "dgx-dashboard-admin",
         "nvidia-persistenced",
+        "tailscaled",
     )
     commit = run(
         "git", "-c", f"safe.directory={REPO}", "-C", str(REPO), "rev-parse", "HEAD"
@@ -69,6 +87,14 @@ def main():
         "deadspark",
     ]
     sudo = ["runuser", "-u", "deadspark", "--", "sudo", "-n", "env"]
+    offline = Path("/test-offline")
+    offline.touch()
+    refused = run(*sudo, *command, ok=False)
+    assert refused.returncode and "not healthy before bootstrap" in refused.stdout
+    assert not Path("/nix").exists()
+    offline.unlink()
+    time.sleep(1.1)
+    print("PASS: offline Tailscale is refused before Nix installation", flush=True)
     failed = run(*sudo, "DGX_NIX_BOOTSTRAP_TEST_FAIL_AFTER_RUNTIME=1", *command, ok=False)
     assert failed.returncode and "injected post-runtime failure" in failed.stdout
     evidence = sorted(Path("/var/lib/dgx-setup/nix-bootstrap").iterdir())[-1]

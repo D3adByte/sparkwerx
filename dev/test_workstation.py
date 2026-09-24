@@ -252,7 +252,6 @@ class SetupTests(unittest.TestCase):
     def test_bootstrap_adapter_reuses_unchanged_operators_and_separate_pin(self):
         adapter = ROOT / "workstations/bootstrap"
         for name in (
-            "bootstrap-nix.sh",
             "update-nix-installer.sh",
             "rollback-fresh-nix-bootstrap.sh",
         ):

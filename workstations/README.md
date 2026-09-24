@@ -19,7 +19,7 @@ and the `spark` management launcher. Dependencies come from the committed
 lock file. Workstation package updates have a separate `nixpkgs-workstation`
 input; they do not update the root or pilot package pins.
 
-The unchanged upstream bootstrap code still reads `fleet/hosts.json`. Its
+The workstation bootstrap still reads `fleet/hosts.json`. Its
 `armen` logical key is used only as a compatibility mapping to `deadspark`;
 all personal overlay and Codex flags are false. The actual workstation profile
 is defined separately in `workstations/hosts.json`. Neither the existing
@@ -27,7 +27,9 @@ headless `converge` nor the pilot-specific Home activation operator applies to
 this workstation. The initial installer retains its receipt, snapshots,
 checksums, factory-service checks, and timed rollback. The
 [workstation bootstrap inputs](bootstrap/README.md) independently pin installer
-2.35.2; symlinks reuse the upstream operators without changing the pilot pin.
+2.35.2. The original pilot pin remains separate. The workstation accepts healthy
+Tailscale with its optional SSH feature off, as declared, and requires exact
+connection/service continuity. It does not alter Tailscale settings.
 
 ## Setup
 
