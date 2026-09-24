@@ -788,3 +788,19 @@ commit may expose `currentCandidate != observedCandidate`; that is a reviewable
 `UPDATE_AVAILABLE` state, not flake-evaluation failure. A successful real
 update must be followed by a deployment-evidence commit before another update.
 See the [update lifecycle](2026-09-03-home-headless-update-lifecycle.md).
+
+### D-020: deadspark workstation foundation
+
+**Status:** ACCEPTED FOR LOCAL IMPLEMENTATION; HOST ACTIVATION PENDING VALIDATION
+
+The new user requests reproducible system setup while retaining factory DGX OS,
+GNOME, and the existing APT terminal packages. The workstation declaration is
+separate from Armen's pilot. Its personal tools and permission defaults are
+unselected. Qwen and other workloads are outside this change.
+
+The first user-level lifecycle uses Home Manager's package output in an isolated
+Nix profile, with explicit generation rollback and recovery after interruption.
+It does not run Home Manager file/service activation, System Manager, Tailscale
+migration, desktop switching, or a reboot. Existing dotfiles keep their owner.
+The workstation management tools belong to this user selection, not the shared
+three-package fleet base. See [the operator contract](../workstations/README.md).

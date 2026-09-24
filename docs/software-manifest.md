@@ -479,3 +479,14 @@ also denies unfree by default and permits only the exact Nix package name
 The exception installs nothing by itself. Do not broaden it “for convenience.”
 If an approved closure fails because another package is unfree, stop and
 present that exact dependency and why it entered the graph.
+
+## deadspark workstation candidate
+
+The separate [workstation profile](../workstations/README.md) selects the exact
+fleet base plus `nh`, `nix-output-monitor`, `nix-search-tv`, `fzf`, and the local
+`spark` launcher. The Nixpkgs tools use the `nixpkgs-workstation` locked stable
+input; Devbox keeps its existing reviewed adapter. The launcher uses pinned
+Python. All are user-profile tools, with no service, listener, driver, desktop,
+or Codex permission configuration. Exact resolved package versions are written
+to each candidate's `workstation.json`. Build/activation status is recorded in
+the workstation validation record; selection alone is not deployment.

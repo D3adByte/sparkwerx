@@ -1,0 +1,481 @@
+#!/usr/bin/env python3
+"""Manage an isolated Sparkwerx package profile on factory Ubuntu/DGX OS."""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import curses
+import fcntl
+import getpass
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+HOSTS = ROOT / "workstations/hosts.json"
+NIX = ["nix", "--extra-experimental-features", "nix-command flakes"]
+BASE = ["ncdu", "lazydocker", "devbox"]
+ATTR = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*")
+
+
+def run(args, *, capture=False):
+    return subprocess.run(
+        args, check=True, text=True, cwd=ROOT, stdout=subprocess.PIPE if capture else None
+    ).stdout
+
+
+def write_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".write-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as output:
+            json.dump(value, output, indent=2)
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def declaration(host):
+    data = json.loads(HOSTS.read_text())
+    if data.get("schemaVersion") != 1 or host not in data["hosts"]:
+        raise ValueError(f"No workstation declaration for {host}")
+    spec = data["hosts"][host]
+    if spec["system"] != "aarch64-linux" or spec["desktop"] != "factory-gnome":
+        raise ValueError("This operator requires ARM64 and the factory GNOME desktop")
+    if spec["homeDirectory"] != f"/home/{spec['user']}":
+        raise ValueError("Home directory does not match the declared user")
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]*", spec["user"]):
+        raise ValueError("Invalid account name")
+    if any(not ATTR.fullmatch(name) for name in spec["packages"]):
+        raise ValueError("Package names must be Nixpkgs attribute paths")
+    return spec
+
+
+class Profile:
+    """A dedicated profile: no global profiles, services or HM activation scripts."""
+
+    def __init__(self, home):
+        self.home = Path(home)
+        self.state = self.home / ".local/state/sparkwerx"
+        self.profile = self.state / "profile"
+        self.candidate = self.state / "candidate"
+        self.pending = self.state / "pending.json"
+
+    def prepare(self):
+        # Refuse redirected ownership paths, including dangling symlinks.
+        for path in (self.home / ".local", self.home / ".local/state", self.state):
+            if path.is_symlink():
+                raise ValueError(f"Refusing symlinked state directory: {path}")
+        self.state.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if self.state.stat().st_uid != os.getuid():
+            raise ValueError("State directory belongs to another user")
+        self.state.chmod(0o700)
+
+    @contextlib.contextmanager
+    def lock(self):
+        self.prepare()
+        with (self.state / "lock").open("a") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise ValueError("Another workstation operation is running") from error
+            yield
+
+    def current(self):
+        return str(self.profile.resolve()) if self.profile.is_symlink() else None
+
+    def generations(self):
+        result = []
+        for path in self.state.glob("profile-*-link"):
+            match = re.fullmatch(r"profile-(\d+)-link", path.name)
+            if match and path.is_symlink():
+                result.append((int(match[1]), str(path.resolve())))
+        return sorted(result)
+
+    def require_idle(self):
+        if self.pending.exists():
+            raise ValueError("Interrupted transaction found; run dgx-workstation recover first")
+        if self.profile.exists() and not self.profile.is_symlink():
+            raise ValueError("Profile is not a managed symlink")
+
+    def switch(self, candidate):
+        run(["nix-env", "--profile", str(self.profile), "--set", candidate])
+
+    def smoke(self, candidate):
+        manifest = json.loads((Path(candidate) / "workstation.json").read_text())
+        for command in manifest["commands"]:
+            path = self.profile / "bin" / command
+            if not path.is_file() or not os.access(path, os.X_OK):
+                raise ValueError(f"Missing executable in candidate: {command}")
+        if (self.profile / "bin/nh").exists():
+            run([str(self.profile / "bin/nh"), "--version"])
+        run([str(self.profile / "bin/ncdu"), "--version"])
+        run([str(self.profile / "bin/devbox"), "version"])
+
+    def apply(self, candidate):
+        self.require_idle()
+        old = self.current()
+        if old == candidate:
+            print("Already active; no change.")
+            return
+        # nix-env retains old profile generations as GC roots. No GC action is exposed.
+        write_json(self.pending, {"before": old, "candidate": candidate, "time": time.time()})
+        try:
+            self.switch(candidate)
+            self.smoke(candidate)
+        except BaseException:
+            self.recover()
+            raise
+        write_json(self.state / "last-activation.json", json.loads(self.pending.read_text()))
+        self.pending.unlink()
+        print("Package profile activated. Previous generations are retained.")
+
+    def recover(self):
+        if not self.pending.exists():
+            print("No interrupted transaction.")
+            return
+        data = json.loads(self.pending.read_text())
+        current = self.current()
+        if current not in (data["before"], data["candidate"], None):
+            raise ValueError("Profile changed since the transaction; refusing to overwrite it")
+        if data["before"]:
+            self.switch(data["before"])
+        elif self.profile.is_symlink():
+            self.profile.unlink()
+        write_json(self.state / "last-recovery.json", data)
+        self.pending.unlink()
+        print("Restored the package profile's pre-transaction state.")
+
+    def enable_shell(self):
+        self.require_idle()
+        path = self.home / ".zshrc.local"
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise ValueError("Refusing to replace a symlink or non-file .zshrc.local")
+        text = path.read_text() if path.exists() else ""
+        block = '\n# Sparkwerx isolated package profile\n[[ -d "$HOME/.local/state/sparkwerx/profile/bin" ]] && path=("$HOME/.local/state/sparkwerx/profile/bin" $path)\n'
+        if block in text:
+            print("Shell integration already present.")
+            return
+        if "# Sparkwerx isolated package profile" in text:
+            raise ValueError("Existing shell integration differs; review it before changing")
+        if path.exists():
+            backup = self.state / f"zshrc.local.before-{time.time_ns()}"
+            shutil.copy2(path, backup)
+            backup.chmod(0o600)
+            print(f"Shell configuration backup: {backup}")
+        fd, temporary = tempfile.mkstemp(prefix=".zshrc.local-", dir=self.home)
+        try:
+            with os.fdopen(fd, "w") as output:
+                output.write(text + block)
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+        print("Shell integration enabled. Run exec zsh to refresh PATH.")
+
+    def disable(self):
+        self.require_idle()
+        if self.profile.is_symlink():
+            self.profile.unlink()
+        print("Package profile disabled. Retained generations can be restored with rollback.")
+        print("The conditional shell hook is now inactive. Run exec zsh to refresh your shell.")
+
+
+def require_target(host, spec):
+    if os.geteuid() == 0:
+        raise ValueError("Run as the declared user, without sudo")
+    if host != platform.node().split(".")[0] or platform.machine() != "aarch64":
+        raise ValueError("Run this operation on the declared ARM64 Spark")
+    if getpass.getuser() != spec["user"] or os.getuid() != spec["uid"]:
+        raise ValueError("Account does not match the declaration")
+    if str(Path.home()) != spec["homeDirectory"]:
+        raise ValueError("HOME does not match the declaration")
+
+
+def show_status(host, spec, profile):
+    print(f"Host: {host}  User: {spec['user']}  Desktop: factory GNOME")
+    if host != platform.node().split(".")[0]:
+        print("Declaration preview only; this command does not inspect a remote machine.")
+        print("Selected packages: " + ", ".join(BASE + spec["packages"]))
+        return
+    print(f"Nix: {shutil.which('nix') or 'not installed / not in PATH'}")
+    print(f"Active package profile: {profile.current() or 'not activated'}")
+    print(
+        f"Recovery: {'REQUIRED: run recover' if profile.pending.exists() else 'no pending transaction'}"
+    )
+    print("Selected packages: " + ", ".join(BASE + spec["packages"]))
+    print("Existing APT packages and terminal configuration keep their current ownership.")
+
+
+def validated_candidate(path, host, spec):
+    resolved = path.resolve()
+    if resolved.parent != Path("/nix/store") or not resolved.is_dir():
+        raise ValueError("Candidate is not a realized Nix store output; build it first")
+    manifest = json.loads((resolved / "workstation.json").read_text())
+    for field, expected in {
+        "hostName": host,
+        "user": spec["user"],
+        "uid": spec["uid"],
+        "homeDirectory": spec["homeDirectory"],
+        "system": spec["system"],
+    }.items():
+        if manifest.get(field) != expected:
+            raise ValueError(f"Candidate belongs to a different {field}")
+    return str(resolved)
+
+
+def execute(action, host, value=None):
+    spec = declaration(host)
+    profile = Profile(Path.home())
+    if action == "status":
+        show_status(host, spec, profile)
+    elif action == "plan":
+        show_status(host, spec, profile)
+        print("\nConfiguration changes:")
+        run(["git", "diff", "HEAD", "--", "workstations/hosts.json", "flake.lock"])
+        if profile.candidate.exists():
+            candidate = validated_candidate(profile.candidate, host, spec)
+            print("\nBuilt candidate packages:")
+            print((Path(candidate) / "workstation.json").read_text())
+    elif action == "generations":
+        for number, target in profile.generations():
+            marker = " (active)" if target == profile.current() else ""
+            print(f"{number}{marker}: {target}")
+    elif action == "search":
+        if not value:
+            raise ValueError("Supply a package search query")
+        run(["nh", "search", value])
+    elif action in ("add", "remove"):
+        if not value or not ATTR.fullmatch(value) or value in BASE:
+            raise ValueError("Supply a package attribute outside the fixed fleet base")
+        data = json.loads(HOSTS.read_text())
+        selected = data["hosts"][host]["packages"]
+        if action == "add" and value not in selected:
+            selected.append(value)
+        elif action == "remove" and value in selected:
+            selected.remove(value)
+        write_json(HOSTS, data)
+        print("Selection saved in Git working tree. Review and build before activation.")
+    elif action == "update":
+        run(NIX + ["flake", "update", "nixpkgs-workstation"])
+        print("Workstation package pin updated in Git. Review and build before activation.")
+    elif action == "save":
+        managed = {"workstations/hosts.json", "flake.lock"}
+        changed = set(run(["git", "diff", "--name-only", "HEAD"], capture=True).splitlines())
+        untracked = run(["git", "ls-files", "--others", "--exclude-standard"], capture=True)
+        if changed - managed or untracked.strip():
+            raise ValueError(
+                "Other repository changes exist; review and commit them outside the menu"
+            )
+        if not changed:
+            print("No configuration changes to save.")
+            return
+        run(["git", "diff", "HEAD", "--", *sorted(managed)])
+        run(["git", "add", "--", *sorted(managed)])
+        run(
+            [
+                "git",
+                "-c",
+                "user.name=Sparkwerx local configuration",
+                "-c",
+                "user.email=sparkwerx@localhost",
+                "commit",
+                "-m",
+                "chore(workstation): save package selection and pin",
+                "--",
+                *sorted(managed),
+            ]
+        )
+        print("Saved a local configuration revision. Nothing was pushed or activated.")
+    elif action == "bootstrap":
+        require_target(host, spec)
+        run([str(ROOT / "scripts/bootstrap-nix.sh"), host])
+    else:
+        require_target(host, spec)
+        with profile.lock():
+            if action == "recover":
+                profile.recover()
+                return
+            profile.require_idle()
+            if action == "build":
+                run(
+                    NIX
+                    + [
+                        "build",
+                        "--no-write-lock-file",
+                        "--out-link",
+                        str(profile.candidate),
+                        f".#workstation-{host}",
+                    ]
+                )
+                validated_candidate(profile.candidate, host, spec)
+                print("Candidate built and retained. The active profile is unchanged.")
+            elif action == "apply":
+                if run(["git", "status", "--porcelain"], capture=True).strip():
+                    raise ValueError("Commit the reviewed configuration before activation")
+                expected = run(
+                    NIX
+                    + [
+                        "eval",
+                        "--raw",
+                        "--no-write-lock-file",
+                        f".#packages.aarch64-linux.workstation-{host}.outPath",
+                    ],
+                    capture=True,
+                ).strip()
+                candidate = validated_candidate(profile.candidate, host, spec)
+                if candidate != expected:
+                    raise ValueError(
+                        "Built candidate differs from the committed configuration; rebuild"
+                    )
+                profile.apply(candidate)
+            elif action == "rollback":
+                if not value or not value.isdecimal():
+                    raise ValueError("Supply a generation number from generations")
+                generation = profile.state / f"profile-{int(value)}-link"
+                if not generation.is_symlink():
+                    raise ValueError("No such retained generation")
+                profile.apply(validated_candidate(generation, host, spec))
+            elif action == "shell":
+                profile.enable_shell()
+            elif action == "disable":
+                profile.disable()
+
+
+def tui(host):
+    menu = [
+        ("Status", "status"),
+        ("Preview changes", "plan"),
+        ("Search packages", "search"),
+        ("Add package selection", "add"),
+        ("Remove package selection", "remove"),
+        ("Update workstation package pin", "update"),
+        ("Build candidate", "build"),
+        ("Save reviewed configuration locally", "save"),
+        ("Activate built candidate", "apply"),
+        ("List generations", "generations"),
+        ("Roll back to generation", "rollback"),
+        ("Recover interrupted activation", "recover"),
+        ("Enable Zsh package PATH", "shell"),
+        ("Disable package profile (keep history)", "disable"),
+    ]
+    selection = 0
+    while True:
+
+        def screen(stdscr):
+            nonlocal selection
+            curses.curs_set(0)
+            stdscr.keypad(True)
+            while True:
+                stdscr.erase()
+                height, width = stdscr.getmaxyx()
+                if height < 12 or width < 50:
+                    stdscr.addnstr(
+                        0, 0, "Resize to at least 50 columns x 12 rows; q quits", width - 1
+                    )
+                else:
+                    stdscr.addnstr(1, 2, "SPARKWERX / WORKSTATION", width - 4, curses.A_BOLD)
+                    stdscr.addnstr(2, 2, f"{host}  |  Factory Ubuntu + GNOME", width - 4)
+                    offset = max(0, selection - (height - 8))
+                    for row, (label, _) in enumerate(menu[offset : offset + height - 6], 4):
+                        index = offset + row - 4
+                        style = curses.A_REVERSE if index == selection else curses.A_NORMAL
+                        stdscr.addnstr(
+                            row, 2, ("> " if index == selection else "  ") + label, width - 4, style
+                        )
+                    stdscr.addnstr(
+                        height - 1, 1, "Up/Down or j/k: move  Enter: open  q: quit", width - 2
+                    )
+                stdscr.refresh()
+                key = stdscr.getch()
+                if key in (ord("q"), 27):
+                    return None
+                if key in (curses.KEY_DOWN, ord("j")):
+                    selection = (selection + 1) % len(menu)
+                elif key in (curses.KEY_UP, ord("k")):
+                    selection = (selection - 1) % len(menu)
+                elif key in (10, 13, curses.KEY_ENTER) and height >= 12 and width >= 50:
+                    return menu[selection][1]
+
+        action = curses.wrapper(screen)
+        if action is None:
+            return
+        print(f"\nSparkwerx: {action}\n")
+        try:
+            value = None
+            if action in ("search", "add", "remove", "rollback"):
+                value = input(
+                    "Generation number: " if action == "rollback" else "Package/query: "
+                ).strip()
+                if not value:
+                    continue
+            if action in ("apply", "save", "rollback", "recover", "shell", "update", "disable"):
+                if action in ("apply", "save"):
+                    execute("plan", host)
+                if input(f"Run {action}? [y/N] ").strip().lower() != "y":
+                    continue
+            execute(action, host, value)
+        except (ValueError, OSError, subprocess.CalledProcessError) as error:
+            print(f"Operation failed: {error}")
+        except KeyboardInterrupt:
+            print("Operation interrupted; check status before retrying.")
+        input("\nPress Enter to return to the menu.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "action",
+        nargs="?",
+        default="tui",
+        choices=[
+            "tui",
+            "status",
+            "plan",
+            "search",
+            "add",
+            "remove",
+            "update",
+            "save",
+            "build",
+            "apply",
+            "generations",
+            "rollback",
+            "recover",
+            "shell",
+            "bootstrap",
+            "disable",
+        ],
+    )
+    parser.add_argument("value", nargs="?")
+    parser.add_argument("--host", default=platform.node().split(".")[0])
+    args = parser.parse_args()
+    declaration(args.host)
+    if args.action == "tui":
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            parser.error(
+                "The menu requires a terminal; use status or plan for noninteractive output"
+            )
+        tui(args.host)
+    else:
+        execute(args.action, args.host, args.value)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        print(f"FAIL: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
