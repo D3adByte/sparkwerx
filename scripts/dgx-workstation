@@ -29,7 +29,11 @@ ATTR = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*")
 def run(args, *, capture=False):
     try:
         return subprocess.run(
-            args, check=True, text=True, cwd=ROOT, stdout=subprocess.PIPE if capture else None
+            args,
+            check=True,
+            text=True,
+            cwd=ROOT,
+            stdout=subprocess.PIPE if capture else None,
         ).stdout
     except FileNotFoundError as error:
         command = Path(args[0]).name
@@ -271,16 +275,280 @@ def validated_candidate(path, host, spec):
     return str(resolved)
 
 
+def catalog(query, system):
+    lock = json.loads((ROOT / "flake.lock").read_text())
+    node = lock["nodes"]["root"]["inputs"]["nixpkgs-workstation"]
+    channel = lock["nodes"][node]["original"]["ref"]
+    print(f":: Searching {channel} for {query!r} ...", flush=True)
+    data = json.loads(
+        run(
+            ["nh", "search", "--channel", channel, "--limit", "100", "--json", query],
+            capture=True,
+        )
+    )
+    found = {}
+    for item in data["results"]:
+        attr = item.get("package_attr_name", "")
+        if ATTR.fullmatch(attr) and system in item.get("package_platforms", []):
+            found[attr] = item
+    print("Catalog versions are a guide; review shows versions built from your pin.")
+    return sorted(
+        found.values(),
+        key=lambda item: (
+            item["package_attr_name"] != query,
+            item["package_attr_name"],
+        ),
+    )
+
+
+def plain(value):
+    """Keep untrusted catalog text on one line without terminal controls."""
+    return "".join(c if c.isprintable() else " " for c in str(value))
+
+
+def pick(rows, title, *, multiple=True):
+    """Return keys from a keyboard-searchable list; escape never edits anything."""
+    if not rows:
+        print("No matching packages available for this selection.")
+        return []
+    if not shutil.which("fzf"):
+        raise ValueError("Package picker requires fzf. Use Advanced or finish spark setup.")
+    configure_terminal()
+    env = dict(os.environ, FZF_DEFAULT_OPTS="", FZF_DEFAULT_OPTS_FILE="")
+    command = [
+        "fzf",
+        "--layout=reverse",
+        "--border=rounded",
+        "--height=80%",
+        "--delimiter=\t",
+        "--with-nth=2..",
+        "--no-sort",
+        "--prompt=Filter > ",
+        "--header="
+        + title
+        + "\n"
+        + ("Tab: select multiple  " if multiple else "")
+        + "Enter: continue  Esc: cancel",
+    ]
+    if multiple:
+        command.append("--multi")
+    result = subprocess.run(
+        command,
+        input="".join(f"{key}\t{plain(label)}\n" for key, label in rows),
+        stdout=subprocess.PIPE,
+        text=True,
+        env=env,
+        check=False,
+    )
+    if result.returncode in (1, 130):
+        return []
+    result.check_returncode()
+    selected = list(dict.fromkeys(line.split("\t", 1)[0] for line in result.stdout.splitlines()))
+    if set(selected) - {key for key, _ in rows}:
+        raise ValueError("Picker returned an unknown selection")
+    return selected
+
+
+def package_diff(before, after):
+    def packages(path):
+        if not path:
+            return {}
+        return {
+            p["name"]: p["version"]
+            for p in json.loads((Path(path) / "workstation.json").read_text())["packages"]
+        }
+
+    old, new = packages(before), packages(after)
+    lines = []
+    for name in sorted(old.keys() | new.keys()):
+        if name not in old:
+            lines.append(f"  + {name}  {new[name]}")
+        elif name not in new:
+            lines.append(f"  - {name}  {old[name]}")
+        elif old[name] != new[name]:
+            lines.append(f"  ~ {name}  {old[name]} -> {new[name]}")
+    return lines
+
+
+def guided_change(action, host, selected=()):
+    """Build/review/commit/switch as one flow; cancelled edits are restored."""
+    spec = declaration(host)
+    require_target(host, spec)
+    profile = Profile(Path.home())
+    with profile.lock():
+        profile.require_idle()
+        if run(["git", "status", "--porcelain"], capture=True).strip():
+            raise ValueError(
+                "Unsaved configuration exists. Use Advanced > Preview and finish "
+                "or save those edits before starting a guided change."
+            )
+        head = run(["git", "rev-parse", "HEAD"], capture=True).strip()
+        files = [HOSTS, ROOT / "flake.lock"]
+        original = {path: path.read_bytes() for path in files}
+        proposed = dict(original)
+        committed = False
+        preview = profile.state / f"preview-{os.getpid()}-{time.time_ns()}"
+        try:
+            if action == "upgrade":
+                print("\n:: Refreshing workstation package pin ...", flush=True)
+                try:
+                    run(NIX + ["flake", "update", "nixpkgs-workstation"])
+                finally:
+                    proposed[files[1]] = files[1].read_bytes()
+            else:
+                if any(not ATTR.fullmatch(name) or name in BASE for name in selected):
+                    raise ValueError("Choose package attributes outside the fixed fleet base")
+                data = json.loads(original[HOSTS])
+                packages = data["hosts"][host]["packages"]
+                if action == "install":
+                    packages.extend(name for name in selected if name not in packages)
+                elif action == "uninstall":
+                    packages[:] = [name for name in packages if name not in selected]
+                else:
+                    raise ValueError("Unknown guided operation")
+                if data == json.loads(original[HOSTS]):
+                    print("Package selection is already up to date.")
+                    return
+                write_json(HOSTS, data)
+                proposed[HOSTS] = HOSTS.read_bytes()
+            if proposed == original:
+                print("Selection and package pin are already up to date.")
+                return
+            print(
+                "\n:: Building your selection (active packages stay available) ...",
+                flush=True,
+            )
+            run(
+                NIX
+                + [
+                    "build",
+                    "--no-write-lock-file",
+                    "--out-link",
+                    str(preview),
+                    f".#workstation-{host}",
+                ]
+            )
+            candidate = validated_candidate(preview, host, declaration(host))
+            print("\n:: Review direct package changes\n")
+            print(
+                "\n".join(package_diff(profile.current(), candidate))
+                or "  Package names/versions unchanged; the pin or build may have changed."
+            )
+            print("\nSaves the selection locally and switches your user package profile.")
+            print("Previous package generations remain available for rollback.")
+            if action == "upgrade":
+
+                def revision(contents):
+                    nodes = json.loads(contents)["nodes"]
+                    return nodes[nodes["root"]["inputs"]["nixpkgs-workstation"]]["locked"]["rev"][
+                        :12
+                    ]
+
+                print(
+                    f"Package pin: {revision(original[files[1]])} -> {revision(proposed[files[1]])}"
+                )
+            if input("\nApply these changes? [y/N] ").strip().lower() not in (
+                "y",
+                "yes",
+            ):
+                print("Cancelled. Active packages are unchanged.")
+                return
+            if (
+                any(path.read_bytes() != proposed[path] for path in files)
+                or run(["git", "rev-parse", "HEAD"], capture=True).strip() != head
+            ):
+                raise ValueError("Configuration changed during review; inspect it before retrying")
+            execute("save", host)
+            committed = True
+            if run(["git", "status", "--porcelain"], capture=True).strip():
+                raise ValueError("Repository changed during save; review it before activation")
+            expected = run(
+                NIX
+                + [
+                    "eval",
+                    "--raw",
+                    "--no-write-lock-file",
+                    f".#packages.aarch64-linux.workstation-{host}.outPath",
+                ],
+                capture=True,
+            ).strip()
+            if candidate != expected:
+                raise ValueError(
+                    "Candidate differs from saved selection; rebuild before activation"
+                )
+            print("\n:: Activating packages ...", flush=True)
+            profile.apply(candidate)
+            print("\nDone. Packages are available in your current shell.")
+        finally:
+            if not committed:
+                same_head = run(["git", "rev-parse", "HEAD"], capture=True).strip() == head
+                for path in files:
+                    if original[path] == proposed[path]:
+                        continue
+                    if same_head and path.read_bytes() == proposed[path]:
+                        path.write_bytes(original[path])
+                    else:
+                        print(f"Preserved intervening edits to {path.name}; review in Advanced.")
+            if preview.is_symlink():
+                preview.unlink()
+
+
+def guided(action, host, query=None):
+    spec = declaration(host)
+    require_target(host, spec)
+    if action == "upgrade":
+        guided_change(action, host)
+        return
+    selected = set(BASE + spec["packages"])
+    if action == "install":
+        query = query or input("Search packages (blank to cancel): ").strip()
+        if not query:
+            return
+        installed = shutil.which(query) if "/" not in query else None
+        if installed:
+            print(f"Already available: {installed}")
+        results = catalog(query, spec["system"])
+        rows = [
+            (
+                p["package_attr_name"],
+                (
+                    f"{p['package_attr_name']:<30} {p.get('package_pversion', ''):<12} "
+                    f"{'[selected] ' if p['package_attr_name'] in selected else ''}"
+                    f"{p.get('package_description', '')}"
+                ),
+            )
+            for p in results
+        ]
+        chosen = pick(rows, "Find & install / ARM64 packages")
+        chosen = [name for name in chosen if name not in selected]
+    else:
+        # The guided UI keeps its own search/picker working; advanced selection
+        # still permits deliberate removal of these separately selected tools.
+        rows = [(name, name) for name in spec["packages"] if name not in ("nh", "fzf")]
+        if query:
+            rows = [(key, label) for key, label in rows if query in key]
+        print("Fleet base and nh/fzf remain available; Advanced manages manual selections.")
+        chosen = pick(rows, "Remove from your user profile")
+    if not chosen:
+        print("No package selection changes.")
+        return
+    print("\nSelected: " + ", ".join(chosen))
+    guided_change(action, host, chosen)
+
+
 def execute(action, host, value=None):
     spec = declaration(host)
     profile = Profile(Path.home())
-    if action == "status":
+    if action in ("install", "uninstall", "upgrade"):
+        guided(action, host, value)
+    elif action == "status":
         show_status(host, spec, profile)
     elif action == "plan":
         show_status(host, spec, profile)
         print("\nConfiguration changes:")
         changes = run(
-            ["git", "diff", "HEAD", "--", "workstations/hosts.json", "flake.lock"], capture=True
+            ["git", "diff", "HEAD", "--", "workstations/hosts.json", "flake.lock"],
+            capture=True,
         )
         print(changes or "No configuration edits. Setup may still be pending; see status above.")
         if profile.candidate.exists():
@@ -319,7 +587,6 @@ def execute(action, host, value=None):
             print("No configuration changes to save.")
             return
         run(["git", "diff", "HEAD", "--", *sorted(managed)])
-        run(["git", "add", "--", *sorted(managed)])
         run(
             [
                 "git",
@@ -397,83 +664,215 @@ def execute(action, host, value=None):
                 profile.disable()
 
 
-def tui(host):
-    configure_terminal()
-    menu = [
-        ("Status", "status"),
-        ("Finish setup: install Nix and selected tools", "setup"),
-        ("Preview changes", "plan"),
-        ("Search packages", "search"),
-        ("Add package selection", "add"),
-        ("Remove package selection", "remove"),
-        ("Update workstation package pin", "update"),
-        ("Build candidate", "build"),
-        ("Save reviewed configuration locally", "save"),
-        ("Activate built candidate", "apply"),
-        ("List generations", "generations"),
-        ("Roll back to generation", "rollback"),
-        ("Recover interrupted activation", "recover"),
-        ("Enable Zsh package PATH", "shell"),
-        ("Disable package profile (keep history)", "disable"),
-    ]
-    selection = 0
-    while True:
-        if not shutil.which("nix"):
-            setup_notice = "Setup incomplete: Nix unavailable. See Status."
-        elif not shutil.which("nh"):
-            setup_notice = "Package search unavailable: nh missing from PATH."
-        else:
-            setup_notice = ""
-
-        def screen(stdscr):
-            nonlocal selection
+def menu_screen(host, title, items, status, selection=0):
+    def screen(stdscr):
+        nonlocal selection
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
+        accent = curses.A_BOLD
+        if curses.has_colors() and "NO_COLOR" not in os.environ:
             try:
-                curses.curs_set(0)
+                curses.start_color()
+                curses.use_default_colors()
+                curses.init_pair(1, curses.COLOR_CYAN, -1)
+                accent |= curses.color_pair(1)
             except curses.error:
                 pass
-            stdscr.keypad(True)
-            while True:
-                stdscr.erase()
-                height, width = stdscr.getmaxyx()
-                if height < 12 or width < 50:
-                    stdscr.addnstr(
-                        0, 0, "Resize to at least 50 columns x 12 rows; q quits", width - 1
-                    )
-                else:
-                    stdscr.addnstr(1, 2, "SPARKWERX / WORKSTATION", width - 4, curses.A_BOLD)
-                    stdscr.addnstr(2, 2, f"{host}  |  Factory Ubuntu + GNOME", width - 4)
-                    stdscr.addnstr(3, 2, setup_notice, width - 4, curses.A_BOLD)
-                    offset = max(0, selection - (height - 8))
-                    for row, (label, _) in enumerate(menu[offset : offset + height - 6], 4):
-                        index = offset + row - 4
-                        style = curses.A_REVERSE if index == selection else curses.A_NORMAL
-                        stdscr.addnstr(
-                            row, 2, ("> " if index == selection else "  ") + label, width - 4, style
-                        )
-                    stdscr.addnstr(
-                        height - 1, 1, "Up/Down or j/k: move  Enter: open  q: quit", width - 2
-                    )
-                stdscr.refresh()
-                key = stdscr.getch()
-                if key in (ord("q"), 27):
-                    return None
-                if key in (curses.KEY_DOWN, ord("j")):
-                    selection = (selection + 1) % len(menu)
-                elif key in (curses.KEY_UP, ord("k")):
-                    selection = (selection - 1) % len(menu)
-                elif key in (10, 13, curses.KEY_ENTER) and height >= 12 and width >= 50:
-                    return menu[selection][1]
+        stdscr.keypad(True)
+        while True:
+            stdscr.erase()
+            height, width = stdscr.getmaxyx()
 
-        action = curses.wrapper(screen)
+            def line(y, text, style=0, height=height, width=width):
+                if 0 <= y < height and width > 4:
+                    stdscr.addnstr(y, 2, plain(text), width - 4, style)
+
+            if height < 14 or width < 54:
+                line(0, "Resize to 54 columns x 14 rows; q goes back")
+            else:
+                line(1, "SPARK  /  " + title, accent)
+                line(2, f"{host}  |  User packages  |  Factory GNOME")
+                line(4, status, curses.A_BOLD)
+                visible = height - 11
+                offset = max(0, selection - visible + 1)
+                for row, (label, _, _) in enumerate(items[offset : offset + visible], 6):
+                    index = offset + row - 6
+                    focused = index == selection
+                    line(
+                        row,
+                        ("> " if focused else "  ") + label,
+                        curses.A_REVERSE | curses.A_BOLD if focused else 0,
+                    )
+                line(height - 4, items[selection][2], accent)
+                line(height - 2, "Up/Down j/k: move   Enter: open   Esc/q: back")
+            stdscr.refresh()
+            key = stdscr.getch()
+            if key in (ord("q"), 27):
+                return None, selection
+            if key in (curses.KEY_DOWN, ord("j")):
+                selection = (selection + 1) % len(items)
+            elif key in (curses.KEY_UP, ord("k")):
+                selection = (selection - 1) % len(items)
+            elif key in (10, 13, curses.KEY_ENTER) and height >= 14 and width >= 54:
+                return items[selection][1], selection
+
+    return curses.wrapper(screen)
+
+
+def tui(host):
+    configure_terminal()
+    primary = [
+        (
+            "Find & install packages",
+            "install",
+            "Search > Tab to select > build > review > install",
+        ),
+        (
+            "Remove packages",
+            "uninstall",
+            "Choose tools to remove from your user profile.",
+        ),
+        (
+            "Update packages",
+            "upgrade",
+            "Refresh the workstation pin, build, and review changes.",
+        ),
+        (
+            "Generations & rollback",
+            "history",
+            "Choose a retained package generation to restore.",
+        ),
+        ("Status", "status", "Inspect setup, selections, and recovery state."),
+        (
+            "Advanced",
+            "advanced",
+            "Manual selections, preview, build, save, and recovery.",
+        ),
+    ]
+    advanced = [
+        (
+            "Preview configuration changes",
+            "plan",
+            "Inspect edits and the last manually built candidate.",
+        ),
+        (
+            "Add package selection",
+            "add",
+            "Edit a Nixpkgs attribute; does not install it yet.",
+        ),
+        (
+            "Remove package selection",
+            "remove",
+            "Edit a selection; does not uninstall it yet.",
+        ),
+        (
+            "Update package pin",
+            "update",
+            "Edit the workstation lock input without activation.",
+        ),
+        (
+            "Build candidate",
+            "build",
+            "Build the working configuration without activation.",
+        ),
+        (
+            "Save configuration locally",
+            "save",
+            "Commit reviewed selections and pin; never pushes.",
+        ),
+        (
+            "Activate built candidate",
+            "apply",
+            "Switch to the candidate matching the saved configuration.",
+        ),
+        (
+            "Recover interrupted activation",
+            "recover",
+            "Restore the profile from its recovery journal.",
+        ),
+        ("Enable Zsh package PATH", "shell", "Add the conditional user package hook."),
+        (
+            "Finish or verify setup",
+            "setup",
+            "Run Nix bootstrap checks, build, and activate selected tools.",
+        ),
+        (
+            "Disable package profile",
+            "disable",
+            "Stop exposing its tools; keep generation history.",
+        ),
+    ]
+    page = "Packages"
+    positions = {"Packages": 0, "Advanced": 0}
+    while True:
+        profile = Profile(Path.home())
+        spec = declaration(host)
+        status = f"Ready  /  {len(BASE + spec['packages'])} selected tools"
+        items = list(primary if page == "Packages" else advanced)
+        if profile.pending.exists():
+            status = "Recovery required: an activation was interrupted"
+            if page == "Packages":
+                items.insert(
+                    0,
+                    (
+                        "Recover interrupted activation",
+                        "recover",
+                        "Restore the previous profile before making more changes.",
+                    ),
+                )
+        elif not profile.current() or not shutil.which("nix"):
+            status = "Setup incomplete"
+            if page == "Packages":
+                items.insert(
+                    0,
+                    (
+                        "Finish setup",
+                        "setup",
+                        "Install Nix and the selected user tools.",
+                    ),
+                )
+        elif not shutil.which("nh") or not shutil.which("fzf"):
+            status = "Search tools missing: use Advanced to restore nh/fzf"
+        else:
+            active = [n for n, target in profile.generations() if target == profile.current()]
+            if active:
+                status += f"  /  generation {active[-1]}"
+        positions[page] = min(positions[page], len(items) - 1)
+        action, positions[page] = menu_screen(host, page, items, status, positions[page])
         if action is None:
+            if page == "Advanced":
+                page = "Packages"
+                continue
             return
-        print(f"\nSparkwerx: {action}\n")
+        if action == "advanced":
+            page = "Advanced"
+            continue
+        print(f"\n:: Spark / {action}\n")
         try:
             value = None
-            if action in ("search", "add", "remove", "rollback"):
-                value = input(
-                    "Generation number: " if action == "rollback" else "Package/query: "
-                ).strip()
+            if action == "history":
+                rows = [
+                    (
+                        str(number),
+                        f"Generation {number}  "
+                        + ("[active]  " if target == profile.current() else "")
+                        + Path(target).name,
+                    )
+                    for number, target in reversed(profile.generations())
+                ]
+                chosen = pick(rows, "Retained generations / rollback", multiple=False)
+                if not chosen:
+                    continue
+                value, action = chosen[0], "rollback"
+                target = profile.state / f"profile-{value}-link"
+                print(
+                    "\n".join(package_diff(profile.current(), target)) or "Same package versions."
+                )
+                print("Rollback restores packages; saved selections/pin remain unchanged.")
+            if action in ("add", "remove"):
+                value = input("Package attribute (blank to cancel): ").strip()
                 if not value:
                     continue
             if action in (
@@ -489,20 +888,23 @@ def tui(host):
                 if action in ("apply", "save", "setup"):
                     execute("plan", host)
                 if action == "setup":
-                    print(
-                        "Installs the Nix daemon/build accounts, selected CLI tools, and Zsh PATH."
-                    )
-                    print(
-                        "Factory OS, GPU stack, desktop, Docker, and SSH retain their current owners."
-                    )
-                if input(f"Run {action}? [y/N] ").strip().lower() != "y":
+                    print("Installs Nix, selected user tools, and the Zsh package PATH.")
+                if input(f"Run {action}? [y/N] ").strip().lower() not in ("y", "yes"):
                     continue
             execute(action, host, value)
-        except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        except (
+            ValueError,
+            OSError,
+            subprocess.CalledProcessError,
+            curses.error,
+        ) as error:
             print(f"Operation failed: {error}")
-        except KeyboardInterrupt:
-            print("Operation interrupted; check status before retrying.")
-        input("\nPress Enter to return to the menu.")
+        except (KeyboardInterrupt, EOFError):
+            print("Operation interrupted; check Status before retrying.")
+        try:
+            input("\nPress Enter to return to the menu.")
+        except (KeyboardInterrupt, EOFError):
+            return
 
 
 def configure_terminal():
@@ -532,6 +934,9 @@ def main():
             "status",
             "plan",
             "search",
+            "install",
+            "uninstall",
+            "upgrade",
             "add",
             "remove",
             "update",
@@ -550,6 +955,14 @@ def main():
     parser.add_argument("value", nargs="?")
     parser.add_argument("--host", default=platform.node().split(".")[0])
     args = parser.parse_args()
+    # Non-login SSH launches should find the already-installed profile too.
+    bins = [
+        str(Path.home() / ".local/state/sparkwerx/profile/bin"),
+        "/nix/var/nix/profiles/default/bin",
+    ]
+    os.environ["PATH"] = ":".join(
+        [p for p in bins if Path(p).is_dir()] + [os.environ.get("PATH", os.defpath)]
+    )
     declaration(args.host)
     if args.action == "tui":
         if not sys.stdin.isatty() or not sys.stdout.isatty():
@@ -558,12 +971,21 @@ def main():
             )
         tui(args.host)
     else:
+        if args.action in ("install", "uninstall", "upgrade") and not sys.stdin.isatty():
+            parser.error("Guided package changes require a terminal")
         execute(args.action, args.host, args.value)
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, subprocess.CalledProcessError, curses.error) as error:
+    except (
+        ValueError,
+        OSError,
+        subprocess.CalledProcessError,
+        curses.error,
+        EOFError,
+        KeyboardInterrupt,
+    ) as error:
         print(f"FAIL: {error}", file=sys.stderr)
         raise SystemExit(1) from error

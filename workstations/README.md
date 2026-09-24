@@ -72,15 +72,44 @@ exec zsh
 spark
 ```
 
-The terminal menu uses arrow keys or j/k, Enter, and q. Long-running operations
-show their live output. Changes to package selection and pins only edit the
-working tree; they require review, a build, and a commit before activation.
-Before setup completes, the menu displays a setup notice. Search first reports
-an exact command already available on this machine; catalog search requires
+The terminal menu uses arrow keys or j/k, Enter, and Esc/q to go back. Its
+primary flow is **Find & install packages**: enter a query, filter the results,
+use Tab to select multiple packages, then Enter to build them. After the build,
+review the exact direct-package versions and confirm activation. Esc cancels
+the picker; declining the review restores the flow's configuration edits.
+Build output stays visible. Search filters catalog results for ARM64 support.
+Kitty and Ghostty SSH sessions use the existing Ubuntu/user terminfo databases,
+including when the launcher runs through Nix Python.
+
+The same guided flows are available directly:
+
+```bash
+spark install btop
+spark uninstall
+spark upgrade
+```
+
+`install` opens the picker rather than installing blindly. `uninstall` lists
+selected extras; the guided picker keeps the fleet base and its own nh/fzf
+tools. `upgrade` refreshes only the workstation package pin, then builds and
+offers a review before activation. The guided flows require a clean checkout,
+hold the profile lock throughout, and save accepted changes as a local Git
+commit before switching packages. Cancellation or build failure restores only
+their own edits; intervening user edits are preserved. A failed activation
+keeps the saved selection for diagnosis/retry and uses the profile's existing
+automatic recovery. A hard process kill may leave configuration edits for
+review under Advanced; it never authorizes an automatic retry.
+
+**Generations & rollback** offers a searchable history. It restores packages;
+it does not rewrite the saved package selection or pin. **Advanced** retains
+the individual selection, preview, build, save, apply, setup, and recovery
+commands. Those manual selection/pin actions only edit the working tree until
+you build, save, and activate them. `spark --help` lists all CLI actions.
+Configuration commits use a local `sparkwerx@localhost` author and never push.
+
+Before setup completes, the menu puts Finish setup first. Search reports an
+exact command already available on this machine; catalog search requires
 `nh`. Missing Nix tools report setup guidance instead of a missing-file error.
-The CLI is available for every action. `spark --help` lists them. The menu's
-save action commits only the package selection and lock file, refuses unrelated
-changes, and uses a local `sparkwerx@localhost` author. It never pushes.
 
 `nh` provides package search and build inspection. Catalog search uses the
 workstation's selected stable channel; the committed lock file determines
@@ -128,7 +157,7 @@ workstation lifecycle.
 ## Checks
 
 ```bash
-python3 -m unittest discover -s dev -p test_workstation.py
+python3 -m unittest discover -s dev -p 'test_workstation*.py'
 python3 scripts/check-docs.py
 ```
 
