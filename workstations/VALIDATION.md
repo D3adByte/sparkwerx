@@ -177,3 +177,30 @@ injected failure, systemd-driven receipt rollback, clean reinstall, recovery
 disarming, and idempotent normal-user adoption all passed. The protected
 Tailscale service and sanitized connection/preferences stayed exact throughout.
 No actual host Tailscale setting or service was changed by this test.
+
+## Live workstation setup complete
+
+The owner reran `spark setup` from commit `c427082` in their sudo terminal.
+Independent postflight confirmed:
+
+- official installer and runtime 2.35.2; the repeated bootstrap verification
+  reported exact adoption with zero mutation;
+- active user generation 1 points to
+  `/nix/store/19ppl4g73746z67i8xwnd0apfdnrz8yp-sparkwerx-deadspark`, identical
+  to the native container-tested candidate;
+- a fresh Zsh shell resolves `spark`, `nh`, ncdu, lazydocker, and Devbox from
+  the isolated user profile and resolves Nix from its installed default profile;
+- `spark search btop` succeeds against the selected `nixos-26.05` catalog;
+- no pending user recovery transaction or armed installer rollback timer;
+- systemd is `running`; Tailscale, GDM, OpenSSH, Docker, NVIDIA persistence,
+  Dashboard, and Dashboard Admin are active;
+- NVIDIA GB10 still reports driver 580.178.04;
+- sanitized Tailscale state remains `Running`, online, wanting to run, with
+  optional Tailscale SSH off, exactly as observed before setup.
+
+The active tool set is ncdu 2.9.2, lazydocker 0.25.2, Devbox 0.18.0, nh 4.4.2,
+nix-output-monitor 2.2.0, nix-search-tv 2.2.7, fzf 0.72.0, and the `spark`
+launcher. btop was searched successfully but was not selected or installed.
+The completed Docker test containers were stopped; their evidence/cache were
+retained. No host reboot, desktop transition, Tailscale reconfiguration, or
+driver replacement occurred.

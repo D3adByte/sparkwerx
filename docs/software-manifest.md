@@ -480,7 +480,7 @@ The exception installs nothing by itself. Do not broaden it â€œfor convenience.â
 If an approved closure fails because another package is unfree, stop and
 present that exact dependency and why it entered the graph.
 
-## deadspark workstation candidate
+## deadspark workstation profile
 
 The separate [workstation profile](../workstations/README.md) selects the exact
 fleet base plus `nh`, `nix-output-monitor`, `nix-search-tv`, `fzf`, and the local
@@ -490,6 +490,10 @@ Python. All are user-profile tools, with no service, listener, driver, desktop,
 or Codex permission configuration. Exact resolved package versions are written
 to each candidate's `workstation.json`. Build/activation status is recorded in
 the workstation validation record; selection alone is not deployment.
+
+The initial selection is now active as user generation 1 on `spark-9667`.
+Fresh-shell command resolution and live stable-channel package search passed;
+exact output and runtime versions are in the workstation validation record.
 
 The workstation's separate bootstrap pin selects official Nix installer
 2.35.2 (ARM64, SHA-256

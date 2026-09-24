@@ -791,7 +791,7 @@ See the [update lifecycle](2026-09-03-home-headless-update-lifecycle.md).
 
 ### D-020: deadspark workstation foundation
 
-**Status:** ACCEPTED FOR LOCAL IMPLEMENTATION; HOST ACTIVATION PENDING VALIDATION
+**Status:** ACTIVE ON spark-9667; FACTORY GNOME RETAINED
 
 The new user requests reproducible system setup while retaining factory DGX OS,
 GNOME, and the existing APT terminal packages. The workstation declaration is
@@ -821,3 +821,8 @@ feature is separately disabled and unselected. The workstation bootstrap now
 permits that healthy state and still requires exact VPN/daemon continuity;
 it does not enable Tailscale SSH, change enrollment/preferences, or restart
 network services. The full disposable lifecycle with this state passed.
+
+The owner's `spark setup` completed at `c427082`. Installer/runtime 2.35.2 and
+user generation 1 are active. Fresh-shell tool resolution and package search
+passed; desktop/GPU/access services are healthy and Tailscale remains online
+with its optional SSH feature unchanged. See the live validation checkpoint.
