@@ -42,7 +42,9 @@ The workstation is a separate user-package lifecycle. Its owner explicitly
 keeps GNOME and the installed desktop applications. Do not route this host
 through the headless convergence or pilot Home activation operators. Its
 `plan`, `status`, and `generations` commands inspect; `build` realizes a candidate
-without activation. Follow its documented installer hold before host setup.
+without activation. Follow its current validation record before host setup.
+`spark setup` uses the workstation's separately pinned bootstrap input root;
+keep the pilot's original installer pin and operators unchanged.
 
 The separate remote-desktop `check` command is read-only too. Read
 [remote desktop](docs/remote-desktop.md) before remote graphics work. The chosen

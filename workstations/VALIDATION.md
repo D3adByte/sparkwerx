@@ -110,3 +110,45 @@ The real Nix-profile lifecycle test passed again natively on ARM64. In
 addition, the actual package output above was activated, disabled, and restored
 in a temporary container-only profile, with its executable postflight passing
 on both activations. These checks did not create a host package profile.
+
+## Workstation installer hold resolved
+
+A separate workstation bootstrap input root now pins official installer
+2.35.2, while relative symlinks reuse the original bootstrap, updater, and
+rollback code without modification. The pilot's installer pin and root
+lifecycle derivations are unchanged. The setup entry point composes that
+bootstrap with the previously validated user-package lifecycle.
+
+The new installer passed a native ARM64 Ubuntu 24.04/systemd lifecycle test:
+
+1. Real installation from the exact plan with the recovery timer armed.
+2. Deliberately injected post-runtime failure.
+3. The timer's systemd service performed receipt-driven uninstall and proved
+   the clean boundary, restored shell/configuration files, removed build
+   accounts, and preserved the synthetic protected services/GPU output.
+4. A successful clean retry installed installer/runtime 2.35.2, passed all
+   postflights, and disarmed recovery.
+5. A repeat invocation as the normal user adopted the exact installation,
+   preserving installer, receipt, configuration hashes, and profile target.
+
+The test image used Ubuntu manifest
+`sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3`
+with its ARM64 image. Its container had private cgroups and no host filesystem,
+host cgroup, Docker socket, or GPU mounts. Systemd required `SYS_ADMIN` and
+container-specific AppArmor/seccomp exceptions; host security policy was not
+changed. Memory/CPU limits were 4 GiB/four CPUs.
+
+The first harness attempt lacked real sudo ownership context; the second
+checked an asynchronous service too early. The corrected harness uses real
+sudo and waits for the rollback completion marker. The full final run passed
+with exit zero. The bootstrap fixture commit was
+`d22e665d967c7a7746ac172e5920e94559e9b00c`; the subsequent changes correct the
+test harness, add regression tests, and make the completed setup's tools
+immediately available inside the menu. Upstream bootstrap code and pins under
+`bootstrap/nix/` stayed byte-identical.
+
+Nineteen workstation regression tests passed, including bootstrap-failure
+short-circuiting, adapter/pin isolation, search before setup, and the previous
+package recovery tests. Host installation can now use `spark setup`; its sudo
+phase remains interactive and its actual hardware/service postflight is
+required separately. These disposable results do not claim host activation.

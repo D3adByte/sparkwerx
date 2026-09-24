@@ -233,5 +233,38 @@ class SearchTests(unittest.TestCase):
                 ws.run(["nix", "build"])
 
 
+class SetupTests(unittest.TestCase):
+    def test_bootstrap_failure_stops_before_package_or_shell_changes(self):
+        with (
+            patch.object(ws, "require_target"),
+            patch.object(
+                ws, "run", side_effect=subprocess.CalledProcessError(1, "bootstrap")
+            ) as command,
+            patch.object(ws.Profile, "lock") as profile_lock,
+        ):
+            with self.assertRaises(subprocess.CalledProcessError):
+                ws.execute("setup", "spark-9667")
+        command.assert_called_once_with(
+            [str(ROOT / "workstations/bootstrap/scripts/bootstrap-nix.sh"), "spark-9667"]
+        )
+        profile_lock.assert_not_called()
+
+    def test_bootstrap_adapter_reuses_unchanged_operators_and_separate_pin(self):
+        adapter = ROOT / "workstations/bootstrap"
+        for name in (
+            "bootstrap-nix.sh",
+            "update-nix-installer.sh",
+            "rollback-fresh-nix-bootstrap.sh",
+        ):
+            entry = adapter / "scripts" / name
+            self.assertTrue(entry.is_symlink())
+            self.assertEqual(entry.resolve(), ROOT / "scripts" / name)
+        pilot = json.loads((ROOT / "bootstrap/nix/source.json").read_text())
+        workstation = json.loads((adapter / "bootstrap/nix/source.json").read_text())
+        self.assertEqual(pilot["installer"]["version"], "2.35.1")
+        self.assertEqual(workstation["installer"]["version"], "2.35.2")
+        self.assertEqual(pilot["linuxPlanner"], workstation["linuxPlanner"])
+
+
 if __name__ == "__main__":
     unittest.main()

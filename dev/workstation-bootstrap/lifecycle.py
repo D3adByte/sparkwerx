@@ -68,12 +68,8 @@ def main():
         commit,
         "deadspark",
     ]
-    environment = {
-        **os.environ,
-        "SUDO_USER": "deadspark",
-        "DGX_NIX_BOOTSTRAP_TEST_FAIL_AFTER_RUNTIME": "1",
-    }
-    failed = run(*command, env=environment, ok=False)
+    sudo = ["runuser", "-u", "deadspark", "--", "sudo", "-n", "env"]
+    failed = run(*sudo, "DGX_NIX_BOOTSTRAP_TEST_FAIL_AFTER_RUNTIME=1", *command, ok=False)
     assert failed.returncode and "injected post-runtime failure" in failed.stdout
     evidence = sorted(Path("/var/lib/dgx-setup/nix-bootstrap").iterdir())[-1]
     assert (evidence / "ARMED").exists()
@@ -84,13 +80,16 @@ def main():
     # Trigger the same systemd service the timer would invoke; retain its timer
     # until receipt-driven rollback has proven complete.
     run("systemctl", "start", service)
+    deadline = time.monotonic() + 90
+    while not (evidence / "ROLLED_BACK").exists() and time.monotonic() < deadline:
+        time.sleep(0.2)
     assert (evidence / "ROLLED_BACK").exists()
     assert not Path("/nix").exists() and not Path("/etc/nix").exists()
     run("systemctl", "stop", timer)
     print("PASS: injected failure and systemd-driven receipt rollback", flush=True)
     time.sleep(1.1)  # Bootstrap evidence names have one-second resolution.
 
-    success = run(*command, env={**os.environ, "SUDO_USER": "deadspark"})
+    success = run(*sudo, *command)
     assert "BOOTSTRAP_STATUS=INSTALLED" in success.stdout
     assert "2.35.2" in run("/nix/var/nix/profiles/default/bin/nix", "--version").stdout
     before = snapshot()

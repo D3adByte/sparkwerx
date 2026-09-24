@@ -809,3 +809,9 @@ The owner subsequently confirmed retention of desktop applications. The
 one-time NVIDIA removal job was disabled through their sudo terminal, with
 its prior state recorded; GNOME Software/Contacts remain installed and host
 health is `running`. See [the validation checkpoint](../workstations/VALIDATION.md).
+
+The workstation uses a separately pinned installer 2.35.2 through a relocatable
+input root that symlinks the unchanged upstream bootstrap operators. Its
+native Ubuntu/systemd install/failure/receipt rollback/retry/adoption tests
+passed. `spark setup` composes that guarded bootstrap and the user profile;
+the original pilot's provisioning pin and root ownership remain unchanged.

@@ -339,6 +339,7 @@ def execute(action, host, value=None):
             execute("build", host)
             execute("apply", host)
             execute("shell", host)
+            os.environ["PATH"] = str(profile.profile / "bin") + ":" + os.environ["PATH"]
             print("Setup complete. Run exec zsh, then spark. Factory desktop remains selected.")
     else:
         require_target(host, spec)
