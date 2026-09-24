@@ -204,3 +204,47 @@ launcher. btop was searched successfully but was not selected or installed.
 The completed Docker test containers were stopped; their evidence/cache were
 retained. No host reboot, desktop transition, Tailscale reconfiguration, or
 driver replacement occurred.
+
+## Guided package manager and SSH terminals
+
+Commit `654a6a7` fixes Nix Python's missing Ubuntu terminfo search paths while
+preserving the real terminal type and user overrides. Commit `784bd67` adds
+guided install/remove/update, an ARM64-filtered multi-select package picker,
+a generation picker, and a smaller main menu with the manual controls under
+Advanced. Non-login SSH launches discover the installed Nix/profile tools.
+
+Thirty-three workstation tests passed. Guided-flow tests use real temporary
+Git repositories with controlled build/activation outcomes and cover:
+cancelled selections and pin updates, build failure, keyboard interruption,
+commit-before-activation, retained configuration after activation failure,
+removal, successful pin updates, unchanged selections, and preservation of
+preexisting/intervening edits. Catalog tests cover ARM64 filtering and exact
+attribute ordering; picker tests cover cancellation and unexpected output.
+The existing real Nix profile-recovery evidence above still applies; the
+guided-flow unit tests do not claim to perform real Nix builds.
+
+All 75 Python tests passed in the existing disposable Nix container, with one
+existing environment-dependent skip. The first local wider-suite attempt
+lacked pre-commit; the successful container run used its cached dependency.
+Ruff, documentation, and whitespace checks passed. The container was stopped
+afterward.
+
+The new menu rendered through the active Nix Python launcher in actual SSH
+PTYs with `TERM=xterm-kitty` at 100x24 and `TERM=xterm-ghostty` at 90x24. Kitty
+search displayed ARM64 btop results, and Tab/Enter returned the exact selected
+attribute. The attempted follow-on build was correctly refused because the
+owner was already running an install; no competing package transaction ran.
+
+The owner's first guided install produced clean local commit `710cd8d` and
+active generation 2, adding `networkmanager` 1.56.0. Ubuntu already supplies
+`/usr/bin/nmtui`; this selection adds a separate user-profile package and does
+not configure its daemon. Independent inspection confirmed NetworkManager,
+Tailscale, GDM, SSH, and Docker remained active.
+
+The owner's subsequent guided upgrade completed as clean commit `00d6115`
+and active generation 3. It advanced only `nixpkgs-workstation` to
+`c508844df6c28fa6dabc1b6af70f3ccbd65c5201`; the other existing input pins
+remained unchanged. Direct package versions were unchanged, while the new
+dependency/build outputs required downloads. The active output was
+`/nix/store/2cnalb5znwld82lhaxv4qlgb5mlny74g-sparkwerx-deadspark` and no
+user recovery journal was pending.

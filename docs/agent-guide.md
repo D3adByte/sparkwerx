@@ -40,6 +40,7 @@ description appear true.
 
 | Host | Setup/application | Root status |
 | --- | --- | --- |
+| `deadspark@spark-9667`, factory GNOME workstation | `spark setup`; guided `spark` package manager; [workstation contract](../workstations/README.md) | Separate installer verification; no System Manager ownership |
 | Newly declared Spark using generic provisioning | `dgx-setup converge` | `dgx-fleet-bootstrap status` |
 | Historical `sparkle-01` on retained generation five | `dgx-setup apply`, or recognized no-op `converge` | `dgx-desktop status` and `dgx-tailscale status` |
 | Any supported Home deployment | `dgx-home` first activation/update as appropriate | `dgx-home status` |

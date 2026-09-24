@@ -4,6 +4,20 @@
 
 For your machine's status, use the [status commands](operations.md#status-checks).
 
+## Workstation: spark-9667
+
+The separate factory-GNOME workstation path is active on `deadspark@spark-9667`.
+It uses Nix installer/runtime 2.35.2 and an isolated user-package profile. The
+owner's guided install and subsequent pin upgrade produced generation 3,
+with earlier generations retained. Native Tailscale, OpenSSH, Docker, and the
+factory desktop remain under their existing ownership.
+
+Use `spark status` and `spark generations` on this machine. Read the
+[workstation README](../workstations/README.md),
+[branch design notes](../workstations/CHANGES.md), and
+[validation record](../workstations/VALIDATION.md). The pilot state below
+belongs to a different host and lifecycle.
+
 ## Pilot: sparkle-01
 
 | Layer | State |

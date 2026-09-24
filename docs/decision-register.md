@@ -811,7 +811,8 @@ its prior state recorded; GNOME Software/Contacts remain installed and host
 health is `running`. See [the validation checkpoint](../workstations/VALIDATION.md).
 
 The workstation uses a separately pinned installer 2.35.2 through a relocatable
-input root that symlinks the unchanged upstream bootstrap operators. Its
+input root that symlinks the unchanged updater and receipt rollback operators.
+Its dedicated bootstrap copy carries the workstation Tailscale check below. Its
 native Ubuntu/systemd install/failure/receipt rollback/retry/adoption tests
 passed. `spark setup` composes that guarded bootstrap and the user profile;
 the original pilot's provisioning pin and root ownership remain unchanged.
@@ -826,3 +827,10 @@ The owner's `spark setup` completed at `c427082`. Installer/runtime 2.35.2 and
 user generation 1 are active. Fresh-shell tool resolution and package search
 passed; desktop/GPU/access services are healthy and Tailscale remains online
 with its optional SSH feature unchanged. See the live validation checkpoint.
+
+The owner subsequently requested a Paru-like guided package manager. `spark`
+now combines search, multi-selection, build, review, local commit, and guarded
+activation. The owner used it to select `networkmanager` and then update the
+workstation pin, producing generation 3 with prior generations retained.
+The package does not take ownership of the native NetworkManager daemon.
+See [what changed and why](../workstations/CHANGES.md).
