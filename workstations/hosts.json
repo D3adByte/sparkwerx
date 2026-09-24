@@ -7,7 +7,13 @@
       "uid": 1000,
       "homeDirectory": "/home/deadspark",
       "desktop": "factory-gnome",
-      "packages": ["nh", "nix-output-monitor", "nix-search-tv", "fzf"]
+      "packages": [
+        "nh",
+        "nix-output-monitor",
+        "nix-search-tv",
+        "fzf",
+        "networkmanager"
+      ]
     }
   }
 }
