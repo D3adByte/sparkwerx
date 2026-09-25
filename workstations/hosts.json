@@ -12,7 +12,8 @@
         "nix-output-monitor",
         "nix-search-tv",
         "fzf",
-        "networkmanager"
+        "networkmanager",
+        "btop"
       ]
     }
   }
