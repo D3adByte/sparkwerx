@@ -108,6 +108,12 @@ commands. Those manual selection/pin actions only edit the working tree until
 you build, save, and activate them. `spark --help` lists all CLI actions.
 Configuration commits use a local `sparkwerx@localhost` author and never push.
 
+The owner's workload utility `vllm_stop` is also available globally from this
+profile. It stops local vLLM Docker containers and unloads their processes
+while retaining model files and caches. See the
+[workload controls](../workloads/huihui-qwen38/README.md#stop-restart-and-retained-state).
+This helper is separate from the three-package fleet base.
+
 If a manual edit or interrupted selection leaves pending changes, choose
 **Review & apply pending changes**, or run `spark finish`. It builds the current
 selection, shows the configuration and actual package differences, asks once,

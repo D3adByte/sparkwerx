@@ -31,6 +31,9 @@ let
               (pkgs.writeShellScriptBin "spark" ''
                 exec ${pkgs.python3}/bin/python3 ${lib.escapeShellArg "${host.homeDirectory}/Development/DGX-setup/scripts/dgx-workstation"} "$@"
               '')
+              (pkgs.writeShellScriptBin "vllm_stop" ''
+                exec ${pkgs.python3}/bin/python3 ${../scripts/vllm_stop} "$@"
+              '')
             ];
         }
       ];
@@ -67,6 +70,7 @@ in
                   "lazydocker"
                   "devbox"
                   "spark"
+                  "vllm_stop"
                 ];
                 packages = map (p: {
                   name = lib.getName p;

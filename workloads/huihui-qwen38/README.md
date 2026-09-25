@@ -72,6 +72,26 @@ credential into Git, a public issue, or a shared transcript.
 
 ## Stop, restart, and retained state
 
+From any directory on the Spark:
+
+```bash
+vllm_stop
+```
+
+This global workstation command stops all local containers using official
+Docker Hub/NGC vLLM images, plus custom containers labeled
+`io.sparkwerx.workload=vllm`. It interrupts active requests, stops the model
+workers, and verifies no matching containers remain running. It retains
+containers, downloaded weights, images, and caches. Repeating it is harmless.
+It uses the local Docker socket, irrespective of any remote Docker context.
+Native vLLM processes and other model runtimes are outside its scope.
+
+Docker gets 15 seconds for shutdown before terminating a stuck container.
+The command does not change restart policies or external service managers;
+this workload's policy remains `restart: "no"`.
+
+To control this one model independently:
+
 ```bash
 docker stop huihui-qwen38
 docker start huihui-qwen38
