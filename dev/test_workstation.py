@@ -129,7 +129,11 @@ class ProfileTests(unittest.TestCase):
                     self.fail("Second lock was acquired")
 
     def test_wrong_host_is_rejected_before_nix(self):
-        with patch.object(ws, "run") as command:
+        with (
+            patch.object(ws, "run") as command,
+            patch.object(ws.os, "geteuid", return_value=1000),
+            patch.object(ws.platform, "node", return_value="different-host"),
+        ):
             with self.assertRaises(ValueError):
                 ws.execute("apply", "spark-9667")
         command.assert_not_called()
