@@ -271,3 +271,38 @@ A comparison against the upstream base confirmed every pre-existing flake
 input pin remains unchanged. The branch adds only `nixpkgs-workstation` to
 that graph. The final documentation-only evidence update passed the local
 documentation and whitespace checks separately.
+
+## Pending-selection repair, 2026-09-25
+
+The owner encountered a pending `btop` edit while independent workload files
+were untracked. The save guard refused unrelated files, but did not identify
+them. Preview also displayed an older candidate beside newer selections.
+Implementation `4e86563` adds `spark finish`, file-specific blockers before
+selection/bootstrap, and exact candidate checks in Preview. It preserves the
+clean-commit activation boundary and existing edits on cancellation/failure.
+
+The full `./scripts/dev check` passed in the retained disposable ARM64 Nix
+container against the implementation bytes: lint, docs, 86 Python tests
+(one existing environment skip), systemd parser checks, and flake evaluation
+without builds. The 43 workstation tests cover completion, cancellation,
+interruption, intervening edits, unrelated files, stale builds, and candidate
+mismatch. Real Nix profile integration separately passed failed first
+install/update recovery, interrupted recovery, disable/re-enable, rollback,
+and retained GC roots. The validation container was stopped after use.
+
+Workload files were separately committed at `98809ba`; original untracked
+files and user selection were backed up privately before deployment. The
+pending selection was preserved, built, reviewed, committed by the operator
+at `f581800`, and activated as generation 4:
+`/nix/store/97xhrzndr722m1v04fmiqdyn6aclgdp5-sparkwerx-deadspark`.
+It adds `btop` 1.4.7. Its binary reports `BTOP_GPU=ON`; its terminal interface
+opened and exited successfully. GPU metric accuracy was not measured.
+
+Generations 1–3 remain retained, Git is clean, and no recovery journal is
+pending. The menu rendered and exited under `xterm-kitty` and `xterm-ghostty`
+pseudoterminals. GDM, Tailscale, OpenSSH, and Docker remained active; the model
+container stayed healthy. No bootstrap, service migration, or reboot was used.
+
+The guided test fixture was then made independent of the owner's live package
+list so installing `btop` cannot invalidate its install/cancel scenarios. All
+43 workstation tests and scoped lint/docs checks passed again.

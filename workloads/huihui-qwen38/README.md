@@ -29,7 +29,7 @@ The starting configuration requests 131,072 tokens, one active sequence, an
 8,192-token prefill batch, and a 70% GPU-memory budget. Memory is shared with
 the OS/desktop; the context setting does not establish long-context quality
 or guarantee a particular inference speed. Startup and inference results are
-recorded after validation.
+recorded in [the live validation](VALIDATION.md).
 
 Docker publishes port 8000 only on loopback, the selected private LAN IPv4,
 and the node's Tailscale IPv4. Its generated port mappings are scoped to those

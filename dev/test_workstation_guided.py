@@ -23,7 +23,30 @@ class GuidedTests(unittest.TestCase):
         self.repo.mkdir()
         (self.repo / "workstations").mkdir()
         self.hosts = self.repo / "workstations/hosts.json"
-        self.hosts.write_bytes(ws.HOSTS.read_bytes())
+        # Operator tests must not change meaning when the real owner installs btop.
+        self.hosts.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "hosts": {
+                        "spark-9667": {
+                            "system": "aarch64-linux",
+                            "desktop": "factory-gnome",
+                            "user": "deadspark",
+                            "uid": 1000,
+                            "homeDirectory": "/home/deadspark",
+                            "packages": [
+                                "nh",
+                                "nix-output-monitor",
+                                "nix-search-tv",
+                                "fzf",
+                                "networkmanager",
+                            ],
+                        }
+                    },
+                }
+            )
+        )
         self.original = self.hosts.read_bytes()
         self.pin = {
             "nodes": {
