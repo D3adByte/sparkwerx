@@ -15,6 +15,15 @@ upstream automatically. Historical root milestones describe the state at each
 milestone; the retained pilot is now generation five with Nix-owned Tailscale
 and headless mode.
 
+## Independent deadspark model workload
+
+The independent deadspark workload selected on 2026-09-25 is recorded in
+[Huihui Qwen3.8](../workloads/huihui-qwen38/README.md): 55.6 GB of external BF16
+weights, a pinned ARM64 vLLM 0.30.0 image, native NVIDIA CDI GPU access, and an
+authenticated API on private LAN/Tailscale/loopback addresses. It is manually
+started, outside Home Manager and the user package profile. Stopping its
+container releases model memory and retains downloaded data and caches.
+
 ## Optional remote desktop
 
 Sunshine/Moonlight over Tailscale is selected for the pilot and defaults off for

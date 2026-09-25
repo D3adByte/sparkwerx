@@ -834,3 +834,15 @@ activation. The owner used it to select `networkmanager` and then update the
 workstation pin, producing generation 3 with prior generations retained.
 The package does not take ownership of the native NetworkManager daemon.
 See [what changed and why](../workstations/CHANGES.md).
+
+### D-021: deadspark's first independent model workload
+
+After workstation setup the owner selected
+`huihui-ai/Huihui-Qwen3.8-27B-abliterated` in a pinned ARM64 vLLM container.
+Keep its downloaded weights in the existing user Hugging Face cache and its
+API credential outside Git/Nix. Publish the authenticated API on localhost,
+the private LAN address, and the node's Tailscale address only. Public/wildcard
+host bindings and automatic startup are unselected. Factory GPU, desktop,
+Docker, SSH, and Tailscale ownership remain unchanged. This separate workload
+does not become part of the workstation package profile. Exact inputs and
+the operating commands are in [the workload record](../workloads/huihui-qwen38/README.md).
