@@ -151,6 +151,119 @@ class GuidedTests(unittest.TestCase):
         self.assertEqual(self.hosts.read_bytes(), self.original + b"\n")
         self.apply.assert_not_called()
 
+    def pending_selection(self):
+        data = json.loads(self.original)
+        data["hosts"]["spark-9667"]["packages"].append("btop")
+        ws.write_json(self.hosts, data)
+        return self.hosts.read_bytes()
+
+    def test_finish_commits_existing_selection_before_activation(self):
+        selected = self.pending_selection()
+
+        def verify(candidate):
+            self.assertEqual(candidate, str(self.candidate))
+            self.assertEqual(
+                self.real_run(["git", "show", "HEAD:workstations/hosts.json"], capture=True),
+                selected.decode(),
+            )
+            self.assertEqual(self.real_run(["git", "status", "--porcelain"], capture=True), "")
+
+        self.apply.side_effect = verify
+        with patch("builtins.input", return_value="y"):
+            ws.execute("finish", "spark-9667")
+        self.apply.assert_called_once()
+        self.clean()
+
+    def test_finish_cancellation_preserves_preexisting_edits(self):
+        selected = self.pending_selection()
+        with patch("builtins.input", return_value="n"):
+            ws.execute("finish", "spark-9667")
+        self.assertEqual(self.hosts.read_bytes(), selected)
+        self.apply.assert_not_called()
+
+    def test_finish_build_failure_preserves_preexisting_edits(self):
+        selected = self.pending_selection()
+
+        def fail():
+            raise subprocess.CalledProcessError(1, "build")
+
+        self.after_build = fail
+        with self.assertRaises(subprocess.CalledProcessError):
+            ws.execute("finish", "spark-9667")
+        self.assertEqual(self.hosts.read_bytes(), selected)
+        self.apply.assert_not_called()
+
+    def test_finish_interruption_preserves_preexisting_edits(self):
+        selected = self.pending_selection()
+        with patch("builtins.input", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                ws.execute("finish", "spark-9667")
+        self.assertEqual(self.hosts.read_bytes(), selected)
+        self.apply.assert_not_called()
+
+    def test_finish_rejects_untracked_workload_without_staging_it(self):
+        selected = self.pending_selection()
+        workload = self.repo / "compose.yaml"
+        workload.write_text("services: {}\n")
+        with self.assertRaisesRegex(ValueError, "compose.yaml"):
+            ws.execute("finish", "spark-9667")
+        self.assertEqual(self.hosts.read_bytes(), selected)
+        self.assertEqual(workload.read_text(), "services: {}\n")
+        self.assertEqual(self.real_run(["git", "diff", "--cached"], capture=True), "")
+        self.apply.assert_not_called()
+
+    def test_blocker_is_reported_before_search(self):
+        self.pending_selection()
+        with patch.object(ws, "catalog") as catalog:
+            with self.assertRaisesRegex(ValueError, "spark finish"):
+                ws.execute("install", "spark-9667", "btop-cuda")
+        catalog.assert_not_called()
+
+    def test_setup_rejects_pending_edits_before_bootstrap(self):
+        selected = self.pending_selection()
+        with patch.object(ws, "run", wraps=self.real_run) as command:
+            with self.assertRaisesRegex(ValueError, "spark finish"):
+                ws.execute("setup", "spark-9667")
+        self.assertTrue(all(call.args[0][0] == "git" for call in command.call_args_list))
+        self.assertEqual(self.hosts.read_bytes(), selected)
+
+    def test_finish_preserves_intervening_edits(self):
+        self.pending_selection()
+        intervening = self.original + b"\n\n"
+        self.after_build = lambda: self.hosts.write_bytes(intervening)
+        with patch("builtins.input", return_value="y"):
+            with self.assertRaisesRegex(ValueError, "changed during"):
+                ws.execute("finish", "spark-9667")
+        self.assertEqual(self.hosts.read_bytes(), intervening)
+        self.apply.assert_not_called()
+
+    def test_finish_rejects_candidate_mismatch_after_save(self):
+        self.pending_selection()
+        with (
+            patch("builtins.input", return_value="y"),
+            patch.object(ws, "expected_candidate", return_value="/different-output"),
+        ):
+            with self.assertRaisesRegex(ValueError, "Candidate differs"):
+                ws.execute("finish", "spark-9667")
+        self.apply.assert_not_called()
+        self.clean()
+
+    def test_plan_labels_stale_candidate_without_showing_old_packages(self):
+        self.pending_selection()
+        profile = ws.Profile(self.home)
+        profile.prepare()
+        profile.candidate.symlink_to(self.candidate)
+        output = io.StringIO()
+        with (
+            patch.object(ws, "show_status"),
+            patch.object(ws, "expected_candidate", return_value="/different-output"),
+            patch("sys.stdout", output),
+        ):
+            ws.execute("plan", "spark-9667")
+        self.assertIn("STALE", output.getvalue())
+        self.assertNotIn("1.4.7", output.getvalue())
+        self.assertIn("spark finish", output.getvalue())
+
     def test_uninstall_commits_selection_and_activates(self):
         with patch("builtins.input", return_value="y"):
             ws.guided_change("uninstall", "spark-9667", ["nix-search-tv"])

@@ -87,6 +87,7 @@ The same guided flows are available directly:
 spark install btop
 spark uninstall
 spark upgrade
+spark finish
 ```
 
 `install` opens the picker rather than installing blindly. `uninstall` lists
@@ -106,6 +107,22 @@ the individual selection, preview, build, save, apply, setup, and recovery
 commands. Those manual selection/pin actions only edit the working tree until
 you build, save, and activate them. `spark --help` lists all CLI actions.
 Configuration commits use a local `sparkwerx@localhost` author and never push.
+
+If a manual edit or interrupted selection leaves pending changes, choose
+**Review & apply pending changes**, or run `spark finish`. It builds the current
+selection, shows the configuration and actual package differences, asks once,
+saves locally, then activates the exact reviewed build. Cancellation and build
+failure preserve edits that existed before this flow. It also handles a saved
+selection whose activation was interrupted; an armed recovery journal must
+first be resolved through `spark recover`.
+
+Preview compares the last manual candidate with the current Nix output and
+labels an outdated candidate **STALE**. It never presents an old build as the
+new selection. Unrelated repository changes are listed by path and must be
+reviewed and committed separately; the package manager never silently includes
+application files in a package commit. Search checks this before opening the
+picker. `spark setup` checks before bootstrap too: an existing installation
+with pending edits needs `spark finish`, not another bootstrap attempt.
 
 Before setup completes, the menu puts Finish setup first. Search reports an
 exact command already available on this machine; catalog search requires

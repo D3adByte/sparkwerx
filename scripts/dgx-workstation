@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 HOSTS = ROOT / "workstations/hosts.json"
 NIX = ["nix", "--extra-experimental-features", "nix-command flakes"]
 BASE = ["ncdu", "lazydocker", "devbox"]
+MANAGED = {"workstations/hosts.json", "flake.lock"}
 ATTR = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*")
 
 
@@ -253,6 +254,11 @@ def show_status(host, spec, profile):
         f"Recovery: {'REQUIRED: run recover' if profile.pending.exists() else 'no pending transaction'}"
     )
     print("Selected packages: " + ", ".join(BASE + spec["packages"]))
+    managed, other = repository_changes()
+    if other:
+        print("Repository: other edits block activation; spark plan lists the files.")
+    elif managed:
+        print("Configuration: pending edits; run spark finish to review and apply them.")
     print("Existing APT packages and terminal configuration keep their current ownership.")
     if not shutil.which("nix") or not profile.current():
         print("Next step: spark setup (installs Nix and activates the selected user tools).")
@@ -370,6 +376,50 @@ def package_diff(before, after):
     return lines
 
 
+def repository_changes():
+    changed = set(
+        filter(None, run(["git", "diff", "--name-only", "-z", "HEAD"], capture=True).split("\0"))
+    )
+    untracked = set(
+        filter(
+            None,
+            run(["git", "ls-files", "--others", "--exclude-standard", "-z"], capture=True).split(
+                "\0"
+            ),
+        )
+    )
+    return changed & MANAGED, (changed - MANAGED) | untracked
+
+
+def require_reviewable(*, pending=False):
+    managed, other = repository_changes()
+    if other:
+        raise ValueError(
+            "Other repository changes need review before package activation:\n"
+            + "\n".join(f"  {plain(path)}" for path in sorted(other))
+            + "\nCommit those files separately in the checkout, then run spark finish. "
+            "Your package selections are preserved."
+        )
+    if managed and not pending:
+        raise ValueError(
+            "Unsaved package changes exist. Run spark finish (Review & apply pending changes) "
+            "before starting another selection. Your edits are preserved."
+        )
+
+
+def expected_candidate(host):
+    return run(
+        NIX
+        + [
+            "eval",
+            "--raw",
+            "--no-write-lock-file",
+            f".#packages.aarch64-linux.workstation-{host}.outPath",
+        ],
+        capture=True,
+    ).strip()
+
+
 def guided_change(action, host, selected=()):
     """Build/review/commit/switch as one flow; cancelled edits are restored."""
     spec = declaration(host)
@@ -377,11 +427,7 @@ def guided_change(action, host, selected=()):
     profile = Profile(Path.home())
     with profile.lock():
         profile.require_idle()
-        if run(["git", "status", "--porcelain"], capture=True).strip():
-            raise ValueError(
-                "Unsaved configuration exists. Use Advanced > Preview and finish "
-                "or save those edits before starting a guided change."
-            )
+        require_reviewable(pending=action == "finish")
         head = run(["git", "rev-parse", "HEAD"], capture=True).strip()
         files = [HOSTS, ROOT / "flake.lock"]
         original = {path: path.read_bytes() for path in files}
@@ -395,7 +441,7 @@ def guided_change(action, host, selected=()):
                     run(NIX + ["flake", "update", "nixpkgs-workstation"])
                 finally:
                     proposed[files[1]] = files[1].read_bytes()
-            else:
+            elif action != "finish":
                 if any(not ATTR.fullmatch(name) or name in BASE for name in selected):
                     raise ValueError("Choose package attributes outside the fixed fleet base")
                 data = json.loads(original[HOSTS])
@@ -411,7 +457,7 @@ def guided_change(action, host, selected=()):
                     return
                 write_json(HOSTS, data)
                 proposed[HOSTS] = HOSTS.read_bytes()
-            if proposed == original:
+            if proposed == original and action != "finish":
                 print("Selection and package pin are already up to date.")
                 return
             print(
@@ -429,6 +475,12 @@ def guided_change(action, host, selected=()):
                 ]
             )
             candidate = validated_candidate(preview, host, declaration(host))
+            if action == "finish":
+                print("\n:: Pending configuration edits\n")
+                print(
+                    run(["git", "diff", "HEAD", "--", *sorted(MANAGED)], capture=True)
+                    or "Selection is saved; checking whether it needs activation."
+                )
             print("\n:: Review direct package changes\n")
             print(
                 "\n".join(package_diff(profile.current(), candidate))
@@ -460,18 +512,15 @@ def guided_change(action, host, selected=()):
                 raise ValueError("Configuration changed during review; inspect it before retrying")
             execute("save", host)
             committed = True
+            saved_head = run(["git", "rev-parse", "HEAD"], capture=True).strip()
             if run(["git", "status", "--porcelain"], capture=True).strip():
                 raise ValueError("Repository changed during save; review it before activation")
-            expected = run(
-                NIX
-                + [
-                    "eval",
-                    "--raw",
-                    "--no-write-lock-file",
-                    f".#packages.aarch64-linux.workstation-{host}.outPath",
-                ],
-                capture=True,
-            ).strip()
+            expected = expected_candidate(host)
+            if (
+                run(["git", "status", "--porcelain"], capture=True).strip()
+                or run(["git", "rev-parse", "HEAD"], capture=True).strip() != saved_head
+            ):
+                raise ValueError("Repository changed during validation; run spark finish again")
             if candidate != expected:
                 raise ValueError(
                     "Candidate differs from saved selection; rebuild before activation"
@@ -496,7 +545,9 @@ def guided_change(action, host, selected=()):
 def guided(action, host, query=None):
     spec = declaration(host)
     require_target(host, spec)
-    if action == "upgrade":
+    # Fail before the catalog/picker if another review must be completed first.
+    require_reviewable(pending=action == "finish")
+    if action in ("upgrade", "finish"):
         guided_change(action, host)
         return
     selected = set(BASE + spec["packages"])
@@ -539,7 +590,7 @@ def guided(action, host, query=None):
 def execute(action, host, value=None):
     spec = declaration(host)
     profile = Profile(Path.home())
-    if action in ("install", "uninstall", "upgrade"):
+    if action in ("install", "uninstall", "upgrade", "finish"):
         guided(action, host, value)
     elif action == "status":
         show_status(host, spec, profile)
@@ -551,10 +602,23 @@ def execute(action, host, value=None):
             capture=True,
         )
         print(changes or "No configuration edits. Setup may still be pending; see status above.")
+        _, other = repository_changes()
+        if other:
+            print("\nOther files blocking activation (review and commit separately):")
+            for path in sorted(other):
+                print(f"  {plain(path)}")
         if profile.candidate.exists():
             candidate = validated_candidate(profile.candidate, host, spec)
-            print("\nBuilt candidate packages:")
-            print((Path(candidate) / "workstation.json").read_text())
+            if candidate != expected_candidate(host):
+                print("\nLast build is STALE: it does not match the current selection/pin.")
+            else:
+                print("\nCurrent candidate changes from active packages:")
+                print(
+                    "\n".join(package_diff(profile.current(), candidate)) or "  No package changes."
+                )
+        else:
+            print("\nNo manually built candidate.")
+        print("\nNext step: spark finish builds, reviews, saves, and activates your selection.")
     elif action == "generations":
         for number, target in profile.generations():
             marker = " (active)" if target == profile.current() else ""
@@ -576,17 +640,12 @@ def execute(action, host, value=None):
         run(NIX + ["flake", "update", "nixpkgs-workstation"])
         print("Workstation package pin updated in Git. Review and build before activation.")
     elif action == "save":
-        managed = {"workstations/hosts.json", "flake.lock"}
-        changed = set(run(["git", "diff", "--name-only", "HEAD"], capture=True).splitlines())
-        untracked = run(["git", "ls-files", "--others", "--exclude-standard"], capture=True)
-        if changed - managed or untracked.strip():
-            raise ValueError(
-                "Other repository changes exist; review and commit them outside the menu"
-            )
+        require_reviewable(pending=True)
+        changed, _ = repository_changes()
         if not changed:
             print("No configuration changes to save.")
             return
-        run(["git", "diff", "HEAD", "--", *sorted(managed)])
+        run(["git", "diff", "HEAD", "--", *sorted(MANAGED)])
         run(
             [
                 "git",
@@ -598,12 +657,14 @@ def execute(action, host, value=None):
                 "-m",
                 "chore(workstation): save package selection and pin",
                 "--",
-                *sorted(managed),
+                *sorted(MANAGED),
             ]
         )
         print("Saved a local configuration revision. Nothing was pushed or activated.")
     elif action in ("bootstrap", "setup"):
         require_target(host, spec)
+        if action == "setup":
+            require_reviewable()
         run([str(ROOT / "workstations/bootstrap/scripts/bootstrap-nix.sh"), host])
         if action == "setup":
             os.environ["PATH"] = "/nix/var/nix/profiles/default/bin:" + os.environ.get("PATH", "")
@@ -634,7 +695,8 @@ def execute(action, host, value=None):
                 print("Candidate built and retained. The active profile is unchanged.")
             elif action == "apply":
                 if run(["git", "status", "--porcelain"], capture=True).strip():
-                    raise ValueError("Commit the reviewed configuration before activation")
+                    require_reviewable()
+                    raise ValueError("Repository changed; run spark plan before activation")
                 expected = run(
                     NIX
                     + [
@@ -725,6 +787,11 @@ def tui(host):
     configure_terminal()
     primary = [
         (
+            "Review & apply pending changes",
+            "finish",
+            "Build your existing selection, review, save, and activate.",
+        ),
+        (
             "Find & install packages",
             "install",
             "Search > Tab to select > build > review > install",
@@ -804,6 +871,8 @@ def tui(host):
             "Stop exposing its tools; keep generation history.",
         ),
     ]
+    # Installing remains the default; unfinished edits move their review first.
+    primary[0], primary[1] = primary[1], primary[0]
     page = "Packages"
     positions = {"Packages": 0, "Advanced": 0}
     while True:
@@ -839,6 +908,13 @@ def tui(host):
             active = [n for n, target in profile.generations() if target == profile.current()]
             if active:
                 status += f"  /  generation {active[-1]}"
+            managed, other = repository_changes()
+            if other:
+                status = "Repository edits block activation: see Status / Preview"
+            elif managed:
+                status = "Pending package edits: choose Review & apply pending changes"
+                if page == "Packages":
+                    items.sort(key=lambda item: item[1] != "finish")
         positions[page] = min(positions[page], len(items) - 1)
         action, positions[page] = menu_screen(host, page, items, status, positions[page])
         if action is None:
@@ -937,6 +1013,7 @@ def main():
             "install",
             "uninstall",
             "upgrade",
+            "finish",
             "add",
             "remove",
             "update",

@@ -237,6 +237,7 @@ class SetupTests(unittest.TestCase):
     def test_bootstrap_failure_stops_before_package_or_shell_changes(self):
         with (
             patch.object(ws, "require_target"),
+            patch.object(ws, "require_reviewable"),
             patch.object(
                 ws, "run", side_effect=subprocess.CalledProcessError(1, "bootstrap")
             ) as command,
