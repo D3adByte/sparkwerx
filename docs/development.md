@@ -41,6 +41,31 @@ No Prettier. The existing Nix shell is the workspace; a Devbox manifest would
 duplicate its pins. Betterer can be added when we have a broader set of quality
 metrics to track; it is not needed for this initial lint gate.
 
+## Disposable Docker checks
+
+When checks need an isolated Nix environment, use `./scripts/dev-container`.
+It defaults to `./scripts/dev check`, or accepts a command and its arguments.
+It uses the previously validated, digest-pinned Nix image, which must already
+be present in factory Docker. It never pulls an image automatically.
+
+The runner copies a read-only checkout into its private writable filesystem.
+It has no host home, Nix store, Docker socket, GPU, or privileged mounts. Limits
+are two CPUs, 4 GiB memory, 512 processes, and 30 minutes. Set
+`SPARK_VALIDATION_SECONDS` to 1–7200 to change the deadline. Dependencies and
+container files are disposable; capture needed output before the command exits.
+
+Docker's `--init` reaps orphan processes; the foreground task and in-container
+deadline ensure completion even if the SSH client disappears. `--rm` and the
+runner's exit/signal cleanup remove the container. Do not resume the historical
+`sparkwerx-workstation-validation` container or create `sleep infinity` test
+containers: its missing init process caused orphaned Git zombies. Systemd
+lifecycle fixtures use their own real init and separate test operators.
+
+Run `python3 dev/container_lifecycle.py` explicitly on an authorized Docker
+test host to check orphan reaping, exit-status propagation, deadline enforcement,
+and cleanup after interruption. This uses the cached image and creates no
+model containers. It is not part of ordinary unit-test discovery.
+
 Hyprland's version metadata is read from the locked input, not its filtered
 build source. This lets a fresh runner evaluate it without a previous build.
 

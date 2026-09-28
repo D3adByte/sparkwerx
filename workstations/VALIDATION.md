@@ -306,3 +306,53 @@ container stayed healthy. No bootstrap, service migration, or reboot was used.
 The guided test fixture was then made independent of the owner's live package
 list so installing `btop` cannot invalidate its install/cancel scenarios. All
 43 workstation tests and scoped lint/docs checks passed again.
+
+## Zombie-process correction, 2026-09-28
+
+Live inspection found 30 exited Git processes parented by `sleep` in the
+retained `sparkwerx-workstation-validation` container. It had been restarted
+for later checks, lacked Docker's init process, and was left idle afterward.
+Stopping only that idle container cleared these zombies; its stopped filesystem
+and cached results remain available. Do not restart it for future checks.
+
+The new [container runner](../scripts/dev-container) runs a foreground task with
+`--init`, automatic removal, signal cleanup, and an in-container deadline. Its
+source mount is read-only; checks use a private writable copy. It uses the same
+pinned Nix image with no pull, GPU access, Docker socket mount, or host Nix/home
+mount. See [development](../docs/development.md#disposable-docker-checks).
+
+The explicit [Docker lifecycle test](../dev/container_lifecycle.py) passed on
+the real ARM64 host: 30 deliberately orphaned children were reaped while the
+task was still alive; successful exit, exit 42, a one-second deadline (124),
+and runner SIGTERM (143) all left no test container. ShellCheck, shfmt, Ruff,
+Python syntax, documentation, and whitespace checks passed. This change did
+not rerun the full Nix build/flake suite or activate a package profile.
+
+Five real `spark status` invocations completed without new tool-owned zombies.
+Inspection of `spark`, `vllm_stop`, and the GPUStack control source confirmed
+their direct subprocess calls wait for children using `subprocess.run`.
+This does not claim every third-party workload can never create a zombie.
+
+One separate zombie belonged to factory Speech Dispatcher 0.12.0-rc2. A service
+restart cleared it temporarily, but optional `espeak-ng-mbrola` failed during
+initialization and recreated it. The normal `espeak-ng` and `openjtalk` modules
+were working. The user requested correction of the reported zombies.
+
+The reviewed [speech configuration](speech-dispatcher.conf) was copied to the
+previously absent `~/.config/speech-dispatcher/speechd.conf` for deadspark only.
+It includes the factory configuration and explicitly selects the existing
+working modules and dummy fallback, avoiding the failed optional backend.
+This is a user-owned workaround, not Nix ownership of the factory speech
+package or service. The pre-change record is under
+`~/.local/state/sparkwerx/speech-module-fix/before.json`.
+
+The service stayed active, its advertised speech modules stayed identical,
+and the factory configuration hash stayed unchanged. Zero zombies were observed
+after both the initial application and a second service restart. No audible
+speech test was performed. Rollback removes only the added user configuration
+and restarts `speech-dispatcher.service` through `systemctl --user`; that returns
+to factory autodetection and can restore the original MBROLA zombie.
+
+Model containers were not started, stopped, or modified by this correction.
+The owner stopped Ornith independently during the work. GPUStack's server and
+worker remained running; GNOME, Docker, Tailscale, and SSH ownership did not change.

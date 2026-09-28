@@ -135,3 +135,8 @@ Keep `nixpkgs-devtools` updates separate from installed package/root pins.
 Do not mass-format historical recovery scripts; their lint exceptions are
 exact-file hashes in `dev/legacy-checks.json`. Changed files must pass and shed
 their exceptions. CI never authorizes activation, and the DGX is not a CI runner.
+
+For authorized disposable Docker checks, use `scripts/dev-container` as described
+in [development](docs/development.md#disposable-docker-checks). Never restart the
+historical idle validation container: it lacks an init process. Keep container
+checks time-limited, reap descendants, and verify cleanup after success or failure.
