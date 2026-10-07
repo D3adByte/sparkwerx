@@ -50,7 +50,8 @@ be present in factory Docker. It never pulls an image automatically.
 
 The runner copies a read-only checkout into its private writable filesystem.
 It has no host home, Nix store, Docker socket, GPU, or privileged mounts. Limits
-are two CPUs, 4 GiB memory, 512 processes, and 30 minutes. Set
+are two CPUs, 8 GiB memory, 512 processes, and 30 minutes. The full flake
+evaluation exceeded the previous 4 GiB cap during the publication check. Set
 `SPARK_VALIDATION_SECONDS` to 1–7200 to change the deadline. Dependencies and
 container files are disposable; capture needed output before the command exits.
 

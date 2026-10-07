@@ -36,7 +36,7 @@ trap 'exit 143' TERM
 # client; --rm removes the container after its bounded foreground task exits.
 docker --host unix:///var/run/docker.sock run --rm --init --restart=no --pull=never \
   --cidfile "$state_dir/container.id" --label sparkwerx.role=validation \
-  --cpus=2 --memory=4g --memory-swap=4g --pids-limit=512 \
+  --cpus=2 --memory=8g --memory-swap=8g --pids-limit=512 \
   --mount "type=bind,source=$repo_dir,target=/src,readonly" \
   --entrypoint timeout "$image" --signal=TERM --kill-after=10s "$duration" \
   bash -c '
