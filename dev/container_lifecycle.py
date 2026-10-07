@@ -36,6 +36,7 @@ def main():
     check(
         """
         set -euo pipefail
+        git status --porcelain >/dev/null
         read -r init < /proc/1/comm
         [[ "$init" == docker-init ]]
         for i in {1..30}; do bash -c 'sleep 0.05 &'; done

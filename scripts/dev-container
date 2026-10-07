@@ -42,7 +42,7 @@ docker --host unix:///var/run/docker.sock run --rm --init --restart=no --pull=ne
   bash -c '
     set -euo pipefail
     mkdir -p /tmp/work
-    cp -a /src/. /tmp/work/
+    cp -a --no-preserve=ownership /src/. /tmp/work/
     cd /tmp/work
     if [[ ! -e /etc/os-release ]]; then
       printf "ID=nix\nNAME=Nix\n" > /etc/os-release
