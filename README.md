@@ -81,6 +81,10 @@ container tests and actual host observations. This is a declared-host workflow,
 not yet a general-purpose onboarding wizard. Use this path for the workstation;
 the `dgx-setup converge` instructions below target headless provisioning.
 
+For review of this branch, start with the [maintainer handoff](workstations/REVIEW.md).
+It maps the changes to their tests, distinguishes deployed state from pending
+integration, and records unresolved issues for human and AI reviewers.
+
 ## Get started
 
 Use `DGX-setup` as the checkout name: existing recovery paths depend on it.

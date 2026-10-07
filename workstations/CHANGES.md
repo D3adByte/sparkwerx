@@ -177,3 +177,8 @@ and full-system recovery are not established by these user-package tests.
 For daily use and exact commands, continue with the
 [workstation README](README.md). For changes to the implementation, follow
 [repository development](../docs/development.md).
+
+The later [maintainer handoff](REVIEW.md) covers pending-selection repair,
+model workload controls, the optional GPUStack trial, test-container cleanup,
+and the October 7 publication review. Use it for the latest deployment
+distinctions; the earlier setup results above remain historical evidence.

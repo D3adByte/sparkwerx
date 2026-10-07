@@ -8,6 +8,11 @@ pilot transcript.
 
 ## Orient quickly
 
+For `feat/deadspark-system-setup`, read the
+[maintainer handoff](../workstations/REVIEW.md) before interpreting historical
+deployment notes. It separates this workstation from the headless pilot and
+lists the remaining integration limits.
+
 1. Resolve the repository root and inspect Git status. Preserve unrelated edits.
 2. Read [status](status.md) and the relevant section of [operations](operations.md).
 3. Classify the task: explanation/audit, repository change, disposable test,

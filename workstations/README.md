@@ -114,6 +114,13 @@ while retaining model files and caches. See the
 [workload controls](../workloads/huihui-qwen38/README.md#stop-restart-and-retained-state).
 This helper is separate from the three-package fleet base.
 
+The newer branch candidate also supplies `gpustack-spark` for the optional
+[private model-manager trial](../workloads/gpustack/README.md) and teaches
+`vllm_stop` to stop managed deployments before standalone containers. Updating
+the checkout alone does not activate those new helpers or start services.
+See the [maintainer handoff](REVIEW.md) for the observed deployment state and
+remaining limits, including the unresolved NVIDIA nvtop dependency rejection.
+
 If a manual edit or interrupted selection leaves pending changes, choose
 **Review & apply pending changes**, or run `spark finish`. It builds the current
 selection, shows the configuration and actual package differences, asks once,
