@@ -86,6 +86,13 @@ containers, downloaded weights, images, and caches. Repeating it is harmless.
 It uses the local Docker socket, irrespective of any remote Docker context.
 Native vLLM processes and other model runtimes are outside its scope.
 
+The branch's newer Nix wrapper also coordinates with the optional
+[GPUStack trial](../gpustack/README.md): configured vLLM deployments are scaled
+to zero before standalone containers are stopped. If that management API is
+unavailable, shutdown returns an error before touching standalone containers.
+This integration requires activating the new workstation candidate; the
+previously installed standalone command does not acquire it merely from a Git pull.
+
 Docker gets 15 seconds for shutdown before terminating a stuck container.
 The command does not change restart policies or external service managers;
 this workload's policy remains `restart: "no"`.

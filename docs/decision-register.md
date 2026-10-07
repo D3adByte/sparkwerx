@@ -846,3 +846,14 @@ host bindings and automatic startup are unselected. Factory GPU, desktop,
 Docker, SSH, and Tailscale ownership remain unchanged. This separate workload
 does not become part of the workstation package profile. Exact inputs and
 the operating commands are in [the workload record](../workloads/huihui-qwen38/README.md).
+
+### D-022: private GPUStack trial on deadspark's workstation
+
+The owner selected GPUStack's browser UI over Tailscale and explicitly requested
+Nix management. Nix packages the controls/configuration; pinned ARM64 containers
+run GPUStack on factory Docker. The trial preserves GNOME and native access.
+The owner requested 90% GPU utilization; the final shared-memory reservation is
+8 GiB once, not separate additive RAM/VRAM reserves. The owner explicitly
+controls model downloads and starts; only stopped presets and metadata previews
+are prepared. See [GPUStack](../workloads/gpustack/README.md) and its
+[validation record](../workloads/gpustack/VALIDATION.md).

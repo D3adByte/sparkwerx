@@ -15,6 +15,18 @@ LOADER.exec_module(stop)
 
 
 class StopTests(unittest.TestCase):
+    def setUp(self):
+        patcher = patch.object(stop, "stop_gpustack")
+        self.manager_stop = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_manager_failure_prevents_container_race(self):
+        self.manager_stop.side_effect = RuntimeError("manager offline")
+        with patch.object(stop, "docker") as docker:
+            with self.assertRaisesRegex(RuntimeError, "manager offline"):
+                stop.stop_models()
+        docker.assert_not_called()
+
     def test_official_and_labeled_images_match_but_neighbors_do_not(self):
         for image in (
             "vllm/vllm-openai:latest",

@@ -3602,6 +3602,7 @@
       ) fleetRootOutputs;
 
       packages.${system} = workstations.packages // {
+        gpustack-spark = import ./workloads/gpustack { inherit pkgs; };
         chromium = chromiumPackage;
         codex-cli = codexPackage;
         devbox = devboxPackage;

@@ -511,3 +511,17 @@ embedding its already selected runtime 2.35.2. The pilot retains its original
 2.35.1 provisioning pin. The workstation operator preserves the same guarded
 lifecycle while accepting healthy Tailscale with its optional SSH feature off
 when declared; the original pilot operator remains unchanged.
+
+## deadspark GPUStack trial
+
+GPUStack 2.2.3 uses the exact ARM64 OCI child digest and upstream source revision
+in [its source record](../workloads/gpustack/source.json). The Nix package
+`gpustack-spark` supplies a pinned Python control program and two hash-checked
+upstream module adaptations for private worker binding and GB10 shared memory.
+The workstation's `vllm_stop` coordinates desired deployments with GPUStack
+before stopping standalone containers. These helpers create no service through
+profile activation. The existing factory Docker engine remains the runtime.
+Mutable credentials, databases, and caches stay outside Nix/Git. UI access is
+private to loopback/Tailscale; model startup remains under user control.
+See [the workload contract](../workloads/gpustack/README.md) for commands,
+network/storage ownership, rollback, and validation limits.

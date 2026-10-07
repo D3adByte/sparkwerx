@@ -5,6 +5,7 @@
   devboxPackage,
 }:
 let
+  gpustackControl = import ../workloads/gpustack { inherit pkgs; };
   hosts = (builtins.fromJSON (builtins.readFile ./hosts.json)).hosts;
   makeHome =
     host:
@@ -28,10 +29,12 @@ let
               name: lib.attrByPath (lib.splitString "." name) (throw "Unknown workstation package: ${name}") pkgs
             ) host.packages)
             ++ [
+              gpustackControl
               (pkgs.writeShellScriptBin "spark" ''
                 exec ${pkgs.python3}/bin/python3 ${lib.escapeShellArg "${host.homeDirectory}/Development/DGX-setup/scripts/dgx-workstation"} "$@"
               '')
               (pkgs.writeShellScriptBin "vllm_stop" ''
+                export SPARK_GPUSTACK_CONTROL=${gpustackControl}/bin/gpustack-spark
                 exec ${pkgs.python3}/bin/python3 ${../scripts/vllm_stop} "$@"
               '')
             ];
@@ -71,6 +74,7 @@ in
                   "devbox"
                   "spark"
                   "vllm_stop"
+                  "gpustack-spark"
                 ];
                 packages = map (p: {
                   name = lib.getName p;

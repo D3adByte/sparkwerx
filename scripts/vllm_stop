@@ -3,8 +3,10 @@
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 DOCKER = ["docker", "--host", "unix:///var/run/docker.sock"]
 LABEL = "io.sparkwerx.workload"
@@ -46,7 +48,21 @@ def running_models():
     ]
 
 
+def stop_gpustack():
+    """Stop desired deployments before touching containers owned by a scheduler."""
+    credential = Path.home() / ".config/sparkwerx/gpustack/management.key"
+    if not credential.exists():
+        return
+    controller = os.environ.get("SPARK_GPUSTACK_CONTROL")
+    if not controller:
+        raise RuntimeError("GPUStack is configured; use the current Nix-managed vllm_stop command")
+    result = subprocess.run([controller, "stop-models", "--vllm-only"], check=False, timeout=120)
+    if result.returncode:
+        raise RuntimeError("GPUStack shutdown failed; refusing to report that models are unloaded")
+
+
 def stop_models():
+    stop_gpustack()
     containers = running_models()
     if not containers:
         print("No running vLLM containers. Downloaded models and caches are retained.")
